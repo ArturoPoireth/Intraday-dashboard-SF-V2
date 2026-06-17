@@ -148,11 +148,12 @@ namespace cAlgo.Robots
                 atrStatus = "Volatilidad optima"; // Rango mayor al 30%
              }
 
-            double distEma8 = Math.Abs(d1Close - d1Ema8);
-            double maxDist = d1Atr * Ema8ProximityThreshold;
+                       double distEma8 = Math.Abs(d1Close - d1Ema8);
+                       double maxDist = d1Atr * Ema8ProximityThreshold;
 
             string d1Trend = GetD1Trend(d1Index);
-            string d1NearEma8 = distEma8 < maxDist ? "SI" : "NO";
+            string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
+
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
             string d1Phase = GetD1Phase(d1Index, d1Trend, d1NearEma8, d1EmasAligned);
             string d1Health = GetD1Health(d1Index, d1Trend);
@@ -171,12 +172,12 @@ namespace cAlgo.Robots
 H1 ATR20 : {h1Atr:F1} ({atrPercent:F0}%) - {atrStatus}
 
 --- D1 ---
-Trend   : {d1Trend}
-EMAs   : {d1EmasAligned}
-Near8   : {d1NearEma8}  THR8: {Ema8ProximityThreshold:F2}
-Phase   : {d1Phase}
+Trend      : {d1Trend}
+EMAs      : {d1EmasAligned}
+Carril 8    : {d1NearEma8}
+Phase      : {d1Phase}
 Fuerza MKD : {d1Health}
-Mom     : {d1Momentum}
+Mom        : {d1Momentum}
 
 --- H1 ---
 Trend      : {h1Trend}
