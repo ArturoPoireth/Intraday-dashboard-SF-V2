@@ -493,21 +493,42 @@ Swing      : {swingStatus}";
         }
 
         private string GetD1Trend(int index)
-        {
-            double close = _d1Bars.ClosePrices[index];
+{
+    // 1. MATEMÁTICA: Medimos la distancia absoluta entre la EMA8 y la EMA21
+    double separation = Math.Abs(_d1Ema8.Result[index] - _d1Ema21.Result[index]);
+    
+    // 2. FILTRO SENSENSIBILIDAD: Umbral unificado al 14% del ATR diario
+    double trendThreshold = _d1Atr20.Result[index] * 0.14;
 
-            if (close > _d1Ema8.Result[index] &&
-                close > _d1Ema21.Result[index] &&
-                close > _d1Ema50.Result[index])
-                return "ALCISTA";
+    // 3. FILTRO LATERAL: Si están muy juntas, el mercado está plano
+    if (separation < trendThreshold)
+    {
+        return "Lateral";
+    }
 
-            if (close < _d1Ema8.Result[index] &&
-                close < _d1Ema21.Result[index] &&
-                close < _d1Ema50.Result[index])
-                return "BAJISTA";
+    double close = _d1Bars.ClosePrices[index];
 
-            return "CONSOL";
-        }
+    // 4. IMPULSO VIVO: El precio cotiza libre por encima o por debajo de las 3 medias
+    if (close > _d1Ema8.Result[index] &&
+        close > _d1Ema21.Result[index] &&
+        close > _d1Ema50.Result[index])
+        return "Alcista";
+
+    if (close < _d1Ema8.Result[index] &&
+        close < _d1Ema21.Result[index] &&
+        close < _d1Ema50.Result[index])
+        return "Babista";
+
+    // 5. RETROCESO SANO: El precio está en medio, pero la EMA21 y la EMA50 mantienen la dirección macro
+    if (_d1Ema21.Result[index] > _d1Ema50.Result[index])
+        return "Retroceso Alcista";
+
+    if (_d1Ema21.Result[index] < _d1Ema50.Result[index])
+        return "Retroceso Bajista";
+
+    return "Lateral";
+}
+
 
         private string GetH1Trend(int index)
         {
