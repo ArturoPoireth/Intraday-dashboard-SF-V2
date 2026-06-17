@@ -1081,22 +1081,22 @@ Swing      : {swingStatus}";
     if (ema8 > ema21 && ema21 > ema50)
     {
         if (currentSeparation >= separationThreshold)
-            return "Alcista Solida | Check";
+            return "Alineadas | Check";
         else
-            return "Alcista Hold | Pend";
+            return "En Carga | Pend";
     }
 
     // 4. VALIDACIÓN GEOMÉTRICA BAJISTA (8 < 21 < 50)
     if (ema8 < ema21 && ema21 < ema50)
     {
         if (currentSeparation >= separationThreshold)
-            return "Bajista Solida | Check";
+            return "Alineadas | Check";
         else
-            return "Bajista Hold | Pend";
+            return "En Carga | Pend";
     }
 
     // 5. CUALQUIER OTRO ORDEN SIGNIFICA QUE ESTÁN TRENZADAS
-    return "Lateral invalid | Pend";
+    return "Cruzadas | Pend";
 }    
     }
 }
