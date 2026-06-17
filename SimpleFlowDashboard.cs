@@ -153,7 +153,7 @@ namespace cAlgo.Robots
 
             string d1Trend = GetD1Trend(d1Index);
             string d1NearEma8 = distEma8 < maxDist ? "SI" : "NO";
-            string d1EmasAligned = AreD1EmasAligned(d1Index) ? "SI" : "NO";
+            string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
             string d1Phase = GetD1Phase(d1Index, d1Trend, d1NearEma8, d1EmasAligned);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
@@ -165,17 +165,18 @@ namespace cAlgo.Robots
             string h1Momentum = GetH1Momentum(h1Index);
             string swingStatus = GetSwingStatusText();
 
+        
             string dashboard =
             $@"D1 ATR20 : {d1Atr:F1}
 H1 ATR20 : {h1Atr:F1} ({atrPercent:F0}%) - {atrStatus}
 
 --- D1 ---
-Trend      : {d1Trend}
-EMAs       : {d1EmasAligned}
-Near8      : {d1NearEma8}  THR8: {Ema8ProximityThreshold:F2}
-Phase      : {d1Phase}
+Trend   : {d1Trend}
+EMAs   : {d1EmasAligned}
+Near8   : {d1NearEma8}  THR8: {Ema8ProximityThreshold:F2}
+Phase   : {d1Phase}
 Fuerza MKD : {d1Health}
-Mom        : {d1Momentum}
+Mom     : {d1Momentum}
 
 --- H1 ---
 Trend      : {h1Trend}
@@ -512,19 +513,19 @@ Swing      : {swingStatus}";
     if (close > _d1Ema8.Result[index] &&
         close > _d1Ema21.Result[index] &&
         close > _d1Ema50.Result[index])
-        return "Alcista";
+        return "Alcista | Check";
 
     if (close < _d1Ema8.Result[index] &&
         close < _d1Ema21.Result[index] &&
         close < _d1Ema50.Result[index])
-        return "Babista";
+        return "Bajista | Check";
 
     // 5. RETROCESO SANO: El precio está en medio, pero la EMA21 y la EMA50 mantienen la dirección macro
     if (_d1Ema21.Result[index] > _d1Ema50.Result[index])
-        return "Retroceso Alcista";
+        return "Retroceso Alcista | Check";
 
     if (_d1Ema21.Result[index] < _d1Ema50.Result[index])
-        return "Retroceso Bajista";
+        return "Retroceso Bajista | Check";
 
     return "Lateral";
 }
@@ -1064,5 +1065,38 @@ Swing      : {swingStatus}";
                 Color.FromArgb(160, 160, 160, 160)
             );
         }
+    
+    private string GetD1EmasAlineacionStatus(int index)
+{
+    // 1. MATEMÁTICA: Calculamos las líneas base de tus medias en D1
+    double ema8 = _d1Ema8.Result[index];
+    double ema21 = _d1Ema21.Result[index];
+    double ema50 = _d1Ema50.Result[index];
+
+    // 2. FILTRO: Calculamos el umbral del 15% del ATR de D1 para medir la separación real
+    double separationThreshold = _d1Atr20.Result[index] * 0.15;
+    double currentSeparation = Math.Abs(ema21 - ema50);
+
+    // 3. VALIDACIÓN GEOMÉTRICA ALCISTA (8 > 21 > 50)
+    if (ema8 > ema21 && ema21 > ema50)
+    {
+        if (currentSeparation >= separationThreshold)
+            return "Alcista Solida | Check";
+        else
+            return "Alcista Hold | Pend";
+    }
+
+    // 4. VALIDACIÓN GEOMÉTRICA BAJISTA (8 < 21 < 50)
+    if (ema8 < ema21 && ema21 < ema50)
+    {
+        if (currentSeparation >= separationThreshold)
+            return "Bajista Solida | Check";
+        else
+            return "Bajista Hold | Pend";
+    }
+
+    // 5. CUALQUIER OTRO ORDEN SIGNIFICA QUE ESTÁN TRENZADAS
+    return "Lateral invalid | Pend";
+}    
     }
 }
