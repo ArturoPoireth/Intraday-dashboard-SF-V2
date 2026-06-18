@@ -155,7 +155,7 @@ namespace cAlgo.Robots
             string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
-            string d1Phase = GetD1Phase(d1Index, d1Trend, d1NearEma8, d1EmasAligned);
+            string d1Phase = GetD1Phase(d1Trend, d1NearEma8);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
 
@@ -564,38 +564,30 @@ Swing      : {swingStatus}";
             return bullish || bearish;
         }
 
-        private string GetD1Phase(int index, string trend, string nearEma8, string emasAligned)
-        {
-            if (trend == "CONSOL" || emasAligned == "NO")
-                return "N/A";
+       private string GetD1Phase(string trend, string nearEma8)
+{
+    // ENTORNO OBLIGATORIO: Si el mercado está en un lateral, las fases NO existen.
+    if (trend == "LATERAL")
+    {
+        return "Neutral / Ruido | Pend";
+    }
 
-            double close = _d1Bars.ClosePrices[index];
-            double ema8 = _d1Ema8.Result[index];
-            double ema21 = _d1Ema21.Result[index];
+    // F3 — SOBREEXTENSIÓN: Si hay tendencia pero el precio se alejó de la zona de valor (Extendido)
+    if (nearEma8.Contains("Extendido"))
+    {
+        return "F3 - Sobreextensión | Pend";
+    }
 
-            if (nearEma8 == "NO")
-                return "F3";
+    // F2 — CONTINUACIÓN: Si hay tendencia y el precio está en rango (nace cerca de la EMA8 impulsándose)
+    if (nearEma8.Contains("En Rango"))
+    {
+        return "F2 - Continuación | Check";
+    }
 
-            if (trend == "ALCISTA")
-            {
-                if (close <= ema8 && close >= ema21)
-                    return "F1";
+    // F1 — CORRECCIÓN: Si el precio está haciendo la transición o compresión hacia las EMAs
+    return "F1 - Corrección | Pend";
+}
 
-                if (close > ema8)
-                    return "F2";
-            }
-
-            if (trend == "BAJISTA")
-            {
-                if (close >= ema8 && close <= ema21)
-                    return "F1";
-
-                if (close < ema8)
-                    return "F2";
-            }
-
-            return "F1";
-        }
 
         private string GetD1Health(int index, string d1Trend)
         {
