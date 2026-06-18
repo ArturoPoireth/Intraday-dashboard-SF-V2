@@ -158,6 +158,8 @@ namespace cAlgo.Robots
             string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
+                                // 4. ESTRUCTURA CONGELADA D1: El robot procesa los pivotes en segundo plano
+            ProcesarSwingFiboD1(d1Index);
             string d1Phase = GetD1Phase(d1Trend, d1NearEma8, d1Index);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
@@ -574,7 +576,6 @@ Swing      : {swingStatus}";
     {
         return "Neutral / Ruido | Pend";
     }
-
     double close = _d1Bars.ClosePrices[index];
 
     // --- ESCENARIO DE TENDENCIA ALCISTA ---
@@ -585,7 +586,6 @@ Swing      : {swingStatus}";
         {
             return "F3 - Sobreextensión | Pend";
         }
-
         // F2 — CONTINUACIÓN: El precio va hacia arriba pero sigue por debajo o igual al Swing High confirmado (Retesteo)
         if (close <= _lastConfirmedD1SwingHigh && !nearEma8.Contains("Extendido") && close > _d1Ema8.Result[index])
         {
@@ -617,10 +617,52 @@ Swing      : {swingStatus}";
 
     return "Neutral / Ruido | Pend";
 }
+ private void ProcesarSwingFiboD1(int index)
+{
+    // 1. CONTROL TEMPORAL: Necesitamos al menos 3 barras diarias cerradas para evaluar un pivote
+    if (index < 3) return;
 
+    // 2. RASTREO: Buscamos hacia atrás el último giro estructural confirmado en el gráfico diario
+    for (int i = 2; i < 150; i++)
+    {
+        int checkIndex = index - i;
+        if (checkIndex < 1) break;
 
+        // --- DETECCIÓN DE SWING HIGH (TECHO CONGELADO) ---
+        if (_d1Bars.HighPrices[checkIndex] > _d1Bars.HighPrices[checkIndex - 1] &&
+            _d1Bars.HighPrices[checkIndex] > _d1Bars.HighPrices[checkIndex + 1] &&
+            _d1Bars.HighPrices[checkIndex] > _d1Bars.HighPrices[checkIndex - 2] &&
+            _d1Bars.HighPrices[checkIndex] > _d1Bars.HighPrices[checkIndex + 2])
+        {
+            if (_d1Ema8.Result[checkIndex] > _d1Ema21.Result[checkIndex] && 
+                _d1Ema21.Result[checkIndex] > _d1Ema50.Result[checkIndex])
+            {
+                _lastConfirmedD1SwingHigh = _d1Bars.HighPrices[checkIndex];
+                break;
+            }
+        }
+    }
 
+    for (int i = 2; i < 150; i++)
+    {
+        int checkIndex = index - i;
+        if (checkIndex < 1) break;
 
+        // --- DETECCIÓN DE SWING LOW (SUELO CONGELADO) ---
+        if (_d1Bars.LowPrices[checkIndex] < _d1Bars.LowPrices[checkIndex - 1] &&
+            _d1Bars.LowPrices[checkIndex] < _d1Bars.LowPrices[checkIndex + 1] &&
+            _d1Bars.LowPrices[checkIndex] < _d1Bars.LowPrices[checkIndex - 2] &&
+            _d1Bars.LowPrices[checkIndex] < _d1Bars.LowPrices[checkIndex + 2])
+        {
+            if (_d1Ema8.Result[checkIndex] < _d1Ema21.Result[checkIndex] && 
+                _d1Ema21.Result[checkIndex] < _d1Ema50.Result[checkIndex])
+            {
+                _lastConfirmedD1SwingLow = _d1Bars.LowPrices[checkIndex];
+                break;
+            }
+        }
+    }
+}
         private string GetD1Health(int index, string d1Trend)
         {
             double high1, high2, low1, low2;
