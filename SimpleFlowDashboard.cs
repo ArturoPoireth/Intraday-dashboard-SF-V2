@@ -51,7 +51,10 @@ namespace cAlgo.Robots
         private int _originBar = -1;
         private int _endBar = -1;
         private int _activatedBar = -1;
-        private double _endPriceD1 = 0.0;
+        // --- MEMORIA ESTRUCTURAL CONGELADA D1 ---
+        private double _lastConfirmedD1SwingHigh = 0.0;
+        private double _lastConfirmedD1SwingLow = 0.0;
+
         private double _originPrice = 0;
         private double _endPrice = 0;
 
@@ -155,19 +158,6 @@ namespace cAlgo.Robots
             string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
-                       // 1. MEMORIA MILIMÉTRICA D1: El robot busca el pico máximo o mínimo real de las últimas 20 velas diarias
-            if (d1Trend.Contains("Alcista"))
-            {
-               _endPriceD1 = _d1Bars.HighPrices.Maximum(20); // El techo más alto reciente en D1
-            }
-            else if (d1Trend.Contains("Bajista"))   
-            {
-                _endPriceD1 = _d1Bars.LowPrices.Minimum(20);  // El suelo más bajo reciente en D1
-            }
-            else
-            {
-                _endPriceD1 = d1Close; // Si es lateral, el precio base
-            }
             string d1Phase = GetD1Phase(d1Trend, d1NearEma8, d1Index);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
@@ -580,7 +570,7 @@ Swing      : {swingStatus}";
        private string GetD1Phase(string trend, string nearEma8, int index)
 {
     // ENTORNO OBLIGATORIO: Si el mercado está en un lateral, las fases NO existen.
-    if (trend == "Lateral")
+    if (trend.Contains("Lateral"))
     {
         return "Neutral / Ruido | Pend";
     }
@@ -590,35 +580,33 @@ Swing      : {swingStatus}";
     // --- ESCENARIO DE TENDENCIA ALCISTA ---
     if (trend.Contains("Alcista"))
     {
-        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por encima del pico más alto anterior (Línea Gris de tu dibujo)
-               if (close > _d1Bars.HighPrices[index - 1])
-
+        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por encima del último Swing High confirmado en D1
+        if (close > _lastConfirmedD1SwingHigh)
         {
             return "F3 - Sobreextensión | Pend";
         }
 
-        // F2 — CONTINUACIÓN: El precio ya rebotó, va hacia arriba pero sigue por debajo del pico anterior (Velitas punteadas)
-        if (close <= _endPriceD1 && !nearEma8.Contains("Extendido") && close > _d1Ema8.Result[index])
+        // F2 — CONTINUACIÓN: El precio va hacia arriba pero sigue por debajo o igual al Swing High confirmado (Retesteo)
+        if (close <= _lastConfirmedD1SwingHigh && !nearEma8.Contains("Extendido") && close > _d1Ema8.Result[index])
         {
             return "F2 - Continuación | Check";
         }
 
-        // F1 — CORRECCIÓN: El precio está en pleno retroceso comprimiéndose en la zona de valor (Velas rojas)
+        // F1 — CORRECCIÓN: El precio está en pleno retroceso comprimiéndose en la zona de valor (EMAs)
         return "F1 - Corrección | Pend";
     }
 
     // --- ESCENARIO DE TENDENCIA BAJISTA ---
     if (trend.Contains("Bajista"))
     {
-        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por debajo del suelo anterior
-                if (close < _d1Bars.LowPrices[index - 1])
-
+        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por debajo del último Swing Low confirmado en D1
+        if (close < _lastConfirmedD1SwingLow)
         {
             return "F3 - Sobreextensión | Pend";
         }
 
-        // F2 — CONTINUACIÓN: El precio va cayendo hacia el suelo previo pero sigue por encima de él
-        if (close >= _endPrice && !nearEma8.Contains("Extendido") && close < _d1Ema8.Result[index])
+        // F2 — CONTINUACIÓN: El precio va cayendo hacia el suelo previo pero sigue por encima o igual al Swing Low confirmado
+        if (close >= _lastConfirmedD1SwingLow && !nearEma8.Contains("Extendido") && close < _d1Ema8.Result[index])
         {
             return "F2 - Continuación | Check";
         }
@@ -629,6 +617,7 @@ Swing      : {swingStatus}";
 
     return "Neutral / Ruido | Pend";
 }
+
 
 
 
