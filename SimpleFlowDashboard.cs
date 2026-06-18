@@ -51,7 +51,7 @@ namespace cAlgo.Robots
         private int _originBar = -1;
         private int _endBar = -1;
         private int _activatedBar = -1;
-
+        private double _endPriceD1 = 0.0;
         private double _originPrice = 0;
         private double _endPrice = 0;
 
@@ -155,6 +155,19 @@ namespace cAlgo.Robots
             string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
+                       // 1. MEMORIA MILIMÉTRICA D1: El robot busca el pico máximo o mínimo real de las últimas 20 velas diarias
+            if (d1Trend.Contains("ALCISTA"))
+            {
+                _endPriceD1 = _d1Bars.HighPrices.Maximum(20); // El techo más alto reciente en D1
+            }
+            else if (d1Trend.Contains("BAJISTA"))
+            {
+                _endPriceD1 = _d1Bars.LowPrices.Minimum(20);  // El suelo más bajo reciente en D1
+            }
+            else
+            {
+                _endPriceD1 = d1Close; // Si es lateral, el precio base
+            }
             string d1Phase = GetD1Phase(d1Trend, d1NearEma8, d1Index);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
@@ -578,7 +591,7 @@ Swing      : {swingStatus}";
     if (trend.Contains("ALCISTA"))
     {
         // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por encima del pico más alto anterior (Línea Gris de tu dibujo)
-        if (close > _endPrice)
+        if (close > _endPriceD1)
         {
             return "F3 - Sobreextensión | Pend";
         }
@@ -597,7 +610,7 @@ Swing      : {swingStatus}";
     if (trend.Contains("BAJISTA"))
     {
         // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por debajo del suelo anterior
-        if (close < _endPrice)
+        if (close < _endPriceD1)
         {
             return "F3 - Sobreextensión | Pend";
         }
