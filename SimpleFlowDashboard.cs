@@ -155,7 +155,7 @@ namespace cAlgo.Robots
             string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
-            string d1Phase = GetD1Phase(d1Trend, d1NearEma8);
+            string d1Phase = GetD1Phase(d1Trend, d1NearEma8, d1Index);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
 
@@ -564,7 +564,7 @@ Swing      : {swingStatus}";
             return bullish || bearish;
         }
 
-       private string GetD1Phase(string trend, string nearEma8)
+       private string GetD1Phase(string trend, string nearEma8, int index)
 {
     // ENTORNO OBLIGATORIO: Si el mercado está en un lateral, las fases NO existen.
     if (trend == "LATERAL")
@@ -572,21 +572,49 @@ Swing      : {swingStatus}";
         return "Neutral / Ruido | Pend";
     }
 
-    // F3 — SOBREEXTENSIÓN: Si hay tendencia pero el precio se alejó de la zona de valor (Extendido)
-    if (nearEma8.Contains("Extendido"))
+    double close = _d1Bars.ClosePrices[index];
+
+    // --- ESCENARIO DE TENDENCIA ALCISTA ---
+    if (trend.Contains("ALCISTA"))
     {
-        return "F3 - Sobreextensión | Pend";
+        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por encima del pico más alto anterior (Línea Gris de tu dibujo)
+        if (close > _endPrice)
+        {
+            return "F3 - Sobreextensión | Pend";
+        }
+
+        // F2 — CONTINUACIÓN: El precio ya rebotó, va hacia arriba pero sigue por debajo del pico anterior (Velitas punteadas)
+        if (close <= _endPrice && !nearEma8.Contains("Extendido") && close > _d1Ema8.Result[index])
+        {
+            return "F2 - Continuación | Check";
+        }
+
+        // F1 — CORRECCIÓN: El precio está en pleno retroceso comprimiéndose en la zona de valor (Velas rojas)
+        return "F1 - Corrección | Pend";
     }
 
-    // F2 — CONTINUACIÓN: Si hay tendencia y el precio está en rango (nace cerca de la EMA8 impulsándose)
-    if (nearEma8.Contains("En Rango"))
+    // --- ESCENARIO DE TENDENCIA BAJISTA ---
+    if (trend.Contains("BAJISTA"))
     {
-        return "F2 - Continuación | Check";
+        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por debajo del suelo anterior
+        if (close < _endPrice)
+        {
+            return "F3 - Sobreextensión | Pend";
+        }
+
+        // F2 — CONTINUACIÓN: El precio va cayendo hacia el suelo previo pero sigue por encima de él
+        if (close >= _endPrice && !nearEma8.Contains("Extendido") && close < _d1Ema8.Result[index])
+        {
+            return "F2 - Continuación | Check";
+        }
+
+        // F1 — CORRECCIÓN: El precio está en pleno rebote al alza buscando las EMAs
+        return "F1 - Corrección | Pend";
     }
 
-    // F1 — CORRECCIÓN: Si el precio está haciendo la transición o compresión hacia las EMAs
-    return "F1 - Corrección | Pend";
+    return "Neutral / Ruido | Pend";
 }
+
 
 
         private string GetD1Health(int index, string d1Trend)
