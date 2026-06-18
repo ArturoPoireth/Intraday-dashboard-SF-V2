@@ -597,7 +597,7 @@ Swing      : {swingStatus}";
         }
 
         // F2 — CONTINUACIÓN: El precio ya rebotó, va hacia arriba pero sigue por debajo del pico anterior (Velitas punteadas)
-        if (close <= _endPrice && !nearEma8.Contains("Extendido") && close > _d1Ema8.Result[index])
+        if (close <= _endPriceD1 && !nearEma8.Contains("Extendido") && close > _d1Ema8.Result[index])
         {
             return "F2 - Continuación | Check";
         }
