@@ -156,11 +156,11 @@ namespace cAlgo.Robots
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
                        // 1. MEMORIA MILIMÉTRICA D1: El robot busca el pico máximo o mínimo real de las últimas 20 velas diarias
-            if (d1Trend.Contains("ALCISTA"))
+            if (d1Trend.Contains("Alcista"))
             {
-                _endPriceD1 = _d1Bars.HighPrices.Maximum(20); // El techo más alto reciente en D1
+               _endPriceD1 = _d1Bars.HighPrices.Maximum(20); // El techo más alto reciente en D1
             }
-            else if (d1Trend.Contains("BAJISTA"))
+            else if (d1Trend.Contains("Bajista"))   
             {
                 _endPriceD1 = _d1Bars.LowPrices.Minimum(20);  // El suelo más bajo reciente en D1
             }
@@ -580,7 +580,7 @@ Swing      : {swingStatus}";
        private string GetD1Phase(string trend, string nearEma8, int index)
 {
     // ENTORNO OBLIGATORIO: Si el mercado está en un lateral, las fases NO existen.
-    if (trend == "LATERAL")
+    if (trend == "Lateral")
     {
         return "Neutral / Ruido | Pend";
     }
@@ -588,10 +588,11 @@ Swing      : {swingStatus}";
     double close = _d1Bars.ClosePrices[index];
 
     // --- ESCENARIO DE TENDENCIA ALCISTA ---
-    if (trend.Contains("ALCISTA"))
+    if (trend.Contains("Alcista"))
     {
         // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por encima del pico más alto anterior (Línea Gris de tu dibujo)
-        if (close > _endPriceD1)
+               if (close > _d1Bars.HighPrices[index - 1])
+
         {
             return "F3 - Sobreextensión | Pend";
         }
@@ -607,10 +608,11 @@ Swing      : {swingStatus}";
     }
 
     // --- ESCENARIO DE TENDENCIA BAJISTA ---
-    if (trend.Contains("BAJISTA"))
+    if (trend.Contains("Bajista"))
     {
         // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por debajo del suelo anterior
-        if (close < _endPriceD1)
+                if (close < _d1Bars.LowPrices[index - 1])
+
         {
             return "F3 - Sobreextensión | Pend";
         }
