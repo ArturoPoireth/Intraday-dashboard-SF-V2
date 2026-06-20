@@ -61,8 +61,8 @@ public double Ema8ProximityThreshold { get; set; }
         private int _endBar = -1;
         private int _activatedBar = -1;
         // --- MEMORIA ESTRUCTURAL CONGELADA D1 ---
-        private double _lastConfirmedD1SwingHigh = 0.0;
-        private double _lastConfirmedD1SwingLow = 0.0;
+        private double _lastConfirmedD1SwingHigh = double.NaN;
+        private double _lastConfirmedD1SwingLow = double.NaN;
 
         private double _originPrice = 0;
         private double _endPrice = 0;
@@ -182,7 +182,7 @@ string d1NearEma8 = d1InEma8Range
             string d1Directional = GetDirectionalStatus(_d1Dms14, d1Index, d1Trend);
                                 // 4. ESTRUCTURA CONGELADA D1: El robot procesa los pivotes en segundo plano
             ProcesarSwingFiboD1(d1Index);
-            string d1Phase = GetD1Phase(d1Trend, d1InEma8Range, d1Index);
+            string d1Phase = GetD1Phase(d1Trend, d1Index);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
 
@@ -642,54 +642,45 @@ Swing      : {swingStatus}";
             return bullish || bearish;
         }
 
-       private string GetD1Phase(string trend, bool inEma8Range, int index)
+       private string GetD1Phase(string trend, int index)
 {
-    // ENTORNO OBLIGATORIO: Si el mercado está en un lateral, las fases NO existen.
-    if (trend.Contains("Lateral"))
-    {
-        return "Neutral / Ruido | Pend";
-    }
-    double close = _d1Bars.ClosePrices[index];
+    if (!trend.Contains("| Check"))
+        return "No Aplica | Pend";
 
-    // --- ESCENARIO DE TENDENCIA ALCISTA ---
+    double close = _d1Bars.ClosePrices[index];
+    double ema8 = _d1Ema8.Result[index];
+
     if (trend.Contains("Alcista"))
     {
-        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por encima del último Swing High confirmado en D1
-        if (close > _lastConfirmedD1SwingHigh)
-        {
-            return "F3 - Sobreextensión | Pend";
-        }
-        // F2 — CONTINUACIÓN: El precio va hacia arriba pero sigue por debajo o igual al Swing High confirmado (Retesteo)
-        if (close <= _lastConfirmedD1SwingHigh && inEma8Range && close > _d1Ema8.Result[index])
-        {
-            return "F2 - Continuación | Check";
-        }
+        if (double.IsNaN(_lastConfirmedD1SwingHigh))
+            return "Sin Referencia | Pend";
 
-        // F1 — CORRECCIÓN: El precio está en pleno retroceso comprimiéndose en la zona de valor (EMAs)
-        return "F1 - Corrección | Pend";
+        if (close <= ema8)
+            return "F1 - Corrección | Pend";
+
+        if (close <= _lastConfirmedD1SwingHigh)
+            return "F2 - Continuación | Check";
+
+        return "F3 - Expansión | Pend";
     }
 
-    // --- ESCENARIO DE TENDENCIA BAJISTA ---
     if (trend.Contains("Bajista"))
     {
-        // F3 — SOBREEXTENSIÓN: El precio rompió y cerró por debajo del último Swing Low confirmado en D1
-        if (close < _lastConfirmedD1SwingLow)
-        {
-            return "F3 - Sobreextensión | Pend";
-        }
+        if (double.IsNaN(_lastConfirmedD1SwingLow))
+            return "Sin Referencia | Pend";
 
-        // F2 — CONTINUACIÓN: El precio va cayendo hacia el suelo previo pero sigue por encima o igual al Swing Low confirmado
-        if (close >= _lastConfirmedD1SwingLow && inEma8Range && close < _d1Ema8.Result[index])
-        {
+        if (close >= ema8)
+            return "F1 - Corrección | Pend";
+
+        if (close >= _lastConfirmedD1SwingLow)
             return "F2 - Continuación | Check";
-        }
 
-        // F1 — CORRECCIÓN: El precio está en pleno rebote al alza buscando las EMAs
-        return "F1 - Corrección | Pend";
+        return "F3 - Expansión | Pend";
     }
 
-    return "Neutral / Ruido | Pend";
+    return "No Aplica | Pend";
 }
+
  private void ProcesarSwingFiboD1(int index)
 {
     // 1. CONTROL TEMPORAL: Necesitamos al menos 3 barras diarias cerradas para evaluar un pivote
@@ -699,7 +690,7 @@ Swing      : {swingStatus}";
     for (int i = 2; i < 150; i++)
     {
         int checkIndex = index - i;
-        if (checkIndex < 1) break;
+        if (checkIndex < 2) break;
 
         // --- DETECCIÓN DE SWING HIGH (TECHO CONGELADO) ---
         if (_d1Bars.HighPrices[checkIndex] > _d1Bars.HighPrices[checkIndex - 1] &&
@@ -719,7 +710,7 @@ Swing      : {swingStatus}";
     for (int i = 2; i < 150; i++)
     {
         int checkIndex = index - i;
-        if (checkIndex < 1) break;
+        if (checkIndex < 2) break;
 
         // --- DETECCIÓN DE SWING LOW (SUELO CONGELADO) ---
         if (_d1Bars.LowPrices[checkIndex] < _d1Bars.LowPrices[checkIndex - 1] &&
