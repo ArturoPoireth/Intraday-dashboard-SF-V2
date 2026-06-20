@@ -7,8 +7,8 @@ namespace cAlgo.Robots
     [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.None)]
     public class SimpleFlowDashboard_v20 : Robot
     {
-        [Parameter("EMA8 Proximity Threshold", DefaultValue = 0.45)]
-        public double Ema8ProximityThreshold { get; set; }
+        [Parameter("Carril 8 ATR Threshold", DefaultValue = 0.45, MinValue = 0.20, MaxValue = 0.75, Step = 0.05)]
+public double Ema8ProximityThreshold { get; set; }
 
         [Parameter("Trend Min Separation (%)", DefaultValue = 7.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
         public double TrendMinSeparationPercent { get; set; }
@@ -169,17 +169,20 @@ else
     atrStatus = "Expansion fuerte";
 }
 
-                       double distEma8 = Math.Abs(d1Close - d1Ema8);
-                       double maxDist = d1Atr * Ema8ProximityThreshold;
+             double distEma8 = Math.Abs(d1Close - d1Ema8);
+double maxDist = d1Atr * Ema8ProximityThreshold;
+bool d1InEma8Range = distEma8 <= maxDist;
 
-            string d1Trend = GetD1Trend(d1Index);
-            string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
+string d1Trend = GetD1Trend(d1Index);
+string d1NearEma8 = d1InEma8Range
+    ? "En Rango | Check"
+    : "Fuera de Rango | Pend";
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
             string d1Directional = GetDirectionalStatus(_d1Dms14, d1Index, d1Trend);
                                 // 4. ESTRUCTURA CONGELADA D1: El robot procesa los pivotes en segundo plano
             ProcesarSwingFiboD1(d1Index);
-            string d1Phase = GetD1Phase(d1Trend, d1NearEma8, d1Index);
+            string d1Phase = GetD1Phase(d1Trend, d1InEma8Range, d1Index);
             string d1Health = GetD1Health(d1Index, d1Trend);
             string d1Momentum = GetD1Momentum(d1Index);
 
@@ -639,7 +642,7 @@ Swing      : {swingStatus}";
             return bullish || bearish;
         }
 
-       private string GetD1Phase(string trend, string nearEma8, int index)
+       private string GetD1Phase(string trend, bool inEma8Range, int index)
 {
     // ENTORNO OBLIGATORIO: Si el mercado está en un lateral, las fases NO existen.
     if (trend.Contains("Lateral"))
@@ -657,7 +660,7 @@ Swing      : {swingStatus}";
             return "F3 - Sobreextensión | Pend";
         }
         // F2 — CONTINUACIÓN: El precio va hacia arriba pero sigue por debajo o igual al Swing High confirmado (Retesteo)
-        if (close <= _lastConfirmedD1SwingHigh && !nearEma8.Contains("Extendido") && close > _d1Ema8.Result[index])
+        if (close <= _lastConfirmedD1SwingHigh && inEma8Range && close > _d1Ema8.Result[index])
         {
             return "F2 - Continuación | Check";
         }
@@ -676,7 +679,7 @@ Swing      : {swingStatus}";
         }
 
         // F2 — CONTINUACIÓN: El precio va cayendo hacia el suelo previo pero sigue por encima o igual al Swing Low confirmado
-        if (close >= _lastConfirmedD1SwingLow && !nearEma8.Contains("Extendido") && close < _d1Ema8.Result[index])
+        if (close >= _lastConfirmedD1SwingLow && inEma8Range && close < _d1Ema8.Result[index])
         {
             return "F2 - Continuación | Check";
         }
