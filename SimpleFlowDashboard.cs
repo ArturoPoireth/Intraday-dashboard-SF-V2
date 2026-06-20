@@ -1202,38 +1202,72 @@ Swing      : {swingStatus}";
                 Color.FromArgb(160, 160, 160, 160)
             );
         }
-    
+          
     private string GetD1EmasAlineacionStatus(int index)
 {
-    // 1. MATEMÁTICA: Calculamos las líneas base de tus medias en D1
     double ema8 = _d1Ema8.Result[index];
     double ema21 = _d1Ema21.Result[index];
     double ema50 = _d1Ema50.Result[index];
+    double atr = _d1Atr20.Result[index];
 
-    // 2. FILTRO: Calculamos el umbral del 15% del ATR de D1 para medir la separación real
-    double separationThreshold = _d1Atr20.Result[index] * 0.15;
-    double currentSeparation = Math.Abs(ema21 - ema50);
+    if (atr <= 0)
+        return "N/A";
 
-    // 3. VALIDACIÓN GEOMÉTRICA ALCISTA (8 > 21 > 50)
-    if (ema8 > ema21 && ema21 > ema50)
+    double minPercent = Math.Min(
+        TrendMinSeparationPercent,
+        TrendCheckSeparationPercent);
+
+    double checkPercent = Math.Max(
+        TrendMinSeparationPercent,
+        TrendCheckSeparationPercent);
+
+    double minThreshold = atr * (minPercent / 100.0);
+    double checkThreshold = atr * (checkPercent / 100.0);
+
+    double macroSeparation = Math.Abs(ema21 - ema50);
+    double fastSeparation = Math.Abs(ema8 - ema21);
+
+    if (macroSeparation < minThreshold)
+        return "Transición | Pend";
+
+    bool bullishStructure = ema21 > ema50;
+    bool bearishStructure = ema21 < ema50;
+
+    if (bullishStructure)
     {
-        if (currentSeparation >= separationThreshold)
-            return "Alineadas | Check";
-        else
+        if (ema8 > ema21)
+        {
+            if (macroSeparation >= checkThreshold &&
+                fastSeparation >= minThreshold)
+                return "Alineadas | Check";
+
             return "En Carga | Pend";
+        }
+
+        if (ema8 > ema50)
+            return "Repliegue | Pend";
+
+        return "Repliegue Profundo | Pend";
     }
 
-    // 4. VALIDACIÓN GEOMÉTRICA BAJISTA (8 < 21 < 50)
-    if (ema8 < ema21 && ema21 < ema50)
+    if (bearishStructure)
     {
-        if (currentSeparation >= separationThreshold)
-            return "Alineadas | Check";
-        else
+        if (ema8 < ema21)
+        {
+            if (macroSeparation >= checkThreshold &&
+                fastSeparation >= minThreshold)
+                return "Alineadas | Check";
+
             return "En Carga | Pend";
+        }
+
+        if (ema8 < ema50)
+            return "Repliegue | Pend";
+
+        return "Repliegue Profundo | Pend";
     }
 
-    // 5. CUALQUIER OTRO ORDEN SIGNIFICA QUE ESTÁN TRENZADAS
-    return "Cruzadas | Pend";
-}    
+    return "Transición | Pend";
+}
     }
 }
