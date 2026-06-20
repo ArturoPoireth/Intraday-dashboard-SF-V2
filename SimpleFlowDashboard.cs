@@ -10,6 +10,12 @@ namespace cAlgo.Robots
         [Parameter("EMA8 Proximity Threshold", DefaultValue = 0.45)]
         public double Ema8ProximityThreshold { get; set; }
 
+        [Parameter("Trend Min Separation (%)", DefaultValue = 7.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
+        public double TrendMinSeparationPercent { get; set; }
+
+        [Parameter("Trend Check Separation (%)", DefaultValue = 14.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
+        public double TrendCheckSeparationPercent { get; set; }
+
         [Parameter("Pivot Strength", DefaultValue = 3)]
         public int PivotStrength { get; set; }
 
@@ -180,6 +186,10 @@ else
             string h1Trend = GetH1Trend(h1Index);
             string h1Directional = GetDirectionalStatus(_h1Dms14, h1Index, h1Trend);
             string sync = GetSync(d1Trend, h1Trend);
+            string h1TrendDisplay =
+               h1Trend == "ALCISTA" ? "Alcista" :
+               h1Trend == "BAJISTA" ? "Bajista" :
+                "Sin Tendencia";
             string h1Structure = GetH1Structure(h1Index, h1Trend);
             string h1Health = GetH1Health(h1Index, h1Trend);
             string h1Momentum = GetH1Momentum(h1Index);
@@ -200,9 +210,8 @@ Fuerza MKD : {d1Health}
 Mom        : {d1Momentum}
 
 --- H1 ---
-Trend      : {h1Trend}
+Trend      : {h1TrendDisplay} | Sync {sync}
 DI14       : {h1Directional}
-Sync       : {sync}
 Struct     : {h1Structure}
 Fuerza MKD : {h1Health}
 Mom        : {h1Momentum}
@@ -556,64 +565,68 @@ Swing      : {swingStatus}";
     return movement + " | " + status;
 }
 
-        private string GetD1Trend(int index)
+      private string GetD1Trend(int index)
 {
-    // 1. MATEMÁTICA: Medimos la distancia absoluta entre la EMA8 y la EMA21
-    double separation = Math.Abs(_d1Ema8.Result[index] - _d1Ema21.Result[index]);
-    
-    // 2. FILTRO SENSENSIBILIDAD: Umbral unificado al 14% del ATR diario
-    double trendThreshold = _d1Atr20.Result[index] * 0.14;
+    double ema21 = _d1Ema21.Result[index];
+    double ema50 = _d1Ema50.Result[index];
+    double atr = _d1Atr20.Result[index];
 
-    // 3. FILTRO LATERAL: Si están muy juntas, el mercado está plano
-    if (separation < trendThreshold)
-    {
-        return "Lateral";
-    }
+    double minPercent = Math.Min(
+        TrendMinSeparationPercent,
+        TrendCheckSeparationPercent);
 
-    double close = _d1Bars.ClosePrices[index];
+    double checkPercent = Math.Max(
+        TrendMinSeparationPercent,
+        TrendCheckSeparationPercent);
 
-    // 4. IMPULSO VIVO: El precio cotiza libre por encima o por debajo de las 3 medias
-    if (close > _d1Ema8.Result[index] &&
-        close > _d1Ema21.Result[index] &&
-        close > _d1Ema50.Result[index])
-        return "Alcista | Check";
+    double separation = Math.Abs(ema21 - ema50);
+    double minThreshold = atr * (minPercent / 100.0);
+    double checkThreshold = atr * (checkPercent / 100.0);
 
-    if (close < _d1Ema8.Result[index] &&
-        close < _d1Ema21.Result[index] &&
-        close < _d1Ema50.Result[index])
-        return "Bajista | Check";
+    if (atr <= 0 || separation < minThreshold)
+        return "Sin Tendencia | Pend";
 
-    // 5. RETROCESO SANO: El precio está en medio, pero la EMA21 y la EMA50 mantienen la dirección macro
-    if (_d1Ema21.Result[index] > _d1Ema50.Result[index])
-        return "Retroceso Alcista | Check";
+    string direction = ema21 > ema50 ? "Alcista" : "Bajista";
 
-    if (_d1Ema21.Result[index] < _d1Ema50.Result[index])
-        return "Retroceso Bajista | Check";
+    if (separation < checkThreshold)
+        return direction + " | En Desarrollo";
 
-    return "Lateral";
+    return direction + " | Check";
 }
 
 
-        private string GetH1Trend(int index)    
-        {
-            if (_h1Ema8.Result[index] > _h1Ema21.Result[index] &&
-                _h1Ema21.Result[index] > _h1Ema50.Result[index])
-                return "ALCISTA";
+        private string GetH1Trend(int index)
+{
+    double ema21 = _h1Ema21.Result[index];
+    double ema50 = _h1Ema50.Result[index];
+    double atr = _h1Atr20.Result[index];
 
-            if (_h1Ema8.Result[index] < _h1Ema21.Result[index] &&
-                _h1Ema21.Result[index] < _h1Ema50.Result[index])
-                return "BAJISTA";
+    double minPercent = Math.Min(
+        TrendMinSeparationPercent,
+        TrendCheckSeparationPercent);
 
-            return "CONSOL";
-        }
+    double separation = Math.Abs(ema21 - ema50);
+    double minThreshold = atr * (minPercent / 100.0);
+
+    if (atr <= 0 || separation < minThreshold)
+        return "CONSOL";
+
+    return ema21 > ema50 ? "ALCISTA" : "BAJISTA";
+}
 
         private string GetSync(string d1Trend, string h1Trend)
-        {
-            if (d1Trend == "CONSOL" || h1Trend == "CONSOL")
-                return "NO";
+{
+    bool d1Bullish = d1Trend.Contains("Alcista");
+    bool d1Bearish = d1Trend.Contains("Bajista");
 
-            return d1Trend == h1Trend ? "SI" : "NO";
-        }
+    if (d1Bullish && h1Trend == "ALCISTA")
+        return "On";
+
+    if (d1Bearish && h1Trend == "BAJISTA")
+        return "On";
+
+    return "Off";
+}
 
         private bool AreD1EmasAligned(int index)
         {
