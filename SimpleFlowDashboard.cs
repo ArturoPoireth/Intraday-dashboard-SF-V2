@@ -133,23 +133,29 @@ namespace cAlgo.Robots
             double d1Ema8 = _d1Ema8.Result[d1Index];
             double d1Atr = _d1Atr20.Result[d1Index];
             double h1Atr = _h1Atr20.Result[h1Index];
+            double d1AtrPips = d1Atr / Symbol.PipSize;
+            double h1AtrPips = h1Atr / Symbol.PipSize;
 
             double atrPercent = (d1Atr > 0) ? (h1Atr / d1Atr) * 100 : 0;
 
-            string atrStatus = "";
+            string atrStatus;
 
-             if (atrPercent <= 15.0)
-             {
-                atrStatus = "Sin volumen";
-             }
-             else if (atrPercent > 15.0 && atrPercent <= 30.0)
-             {
-                atrStatus = "Riesgo de operativa";
-             }
-             else
-             {
-                atrStatus = "Volatilidad optima"; // Rango mayor al 30%
-             }
+if (atrPercent <= 15.0)
+{
+    atrStatus = "Compresion";
+}
+else if (atrPercent <= 25.0)
+{
+    atrStatus = "Rango normal";
+}
+else if (atrPercent <= 40.0)
+{
+    atrStatus = "Expansion";
+}
+else
+{
+    atrStatus = "Expansion fuerte";
+}
 
                        double distEma8 = Math.Abs(d1Close - d1Ema8);
                        double maxDist = d1Atr * Ema8ProximityThreshold;
@@ -172,9 +178,9 @@ namespace cAlgo.Robots
             string swingStatus = GetSwingStatusText();
 
         
-            string dashboard =
-            $@"D1 ATR20 : {d1Atr:F1}
-H1 ATR20 : {h1Atr:F1} ({atrPercent:F0}%) - {atrStatus}
+           string dashboard =
+$@"D1 ATR20 : {d1AtrPips:F1}
+H1 ATR20 : {h1AtrPips:F1} ({atrPercent:F0}%) - {atrStatus}
 
 --- D1 ---
 Trend      : {d1Trend}
