@@ -36,6 +36,9 @@ namespace cAlgo.Robots
         private AverageTrueRange _d1Atr20;
         private AverageTrueRange _h1Atr20;
 
+        private DirectionalMovementSystem _d1Dms14;
+        private DirectionalMovementSystem _h1Dms14;
+
         private enum EstadoSwing
         {
             BuscandoSwing,
@@ -81,6 +84,9 @@ namespace cAlgo.Robots
 
             _d1Atr20 = Indicators.AverageTrueRange(_d1Bars, 20, MovingAverageType.Exponential);
             _h1Atr20 = Indicators.AverageTrueRange(_h1Bars, 20, MovingAverageType.Exponential);
+
+            _d1Dms14 = Indicators.DirectionalMovementSystem(_d1Bars, 14);
+            _h1Dms14 = Indicators.DirectionalMovementSystem(_h1Bars, 14);
 
             Print("Simple Flow Dashboard v2.0 iniciado correctamente.");
             DrawDashboard();
@@ -164,6 +170,7 @@ else
             string d1NearEma8 = distEma8 < maxDist ? "En Rango | Check (.45)" : "Extendido | Pend (.45)";
 
             string d1EmasAligned = GetD1EmasAlineacionStatus(d1Index);
+            string d1Directional = GetDirectionalStatus(_d1Dms14, d1Index, d1Trend);
                                 // 4. ESTRUCTURA CONGELADA D1: El robot procesa los pivotes en segundo plano
             ProcesarSwingFiboD1(d1Index);
             string d1Phase = GetD1Phase(d1Trend, d1NearEma8, d1Index);
@@ -171,6 +178,7 @@ else
             string d1Momentum = GetD1Momentum(d1Index);
 
             string h1Trend = GetH1Trend(h1Index);
+            string h1Directional = GetDirectionalStatus(_h1Dms14, h1Index, h1Trend);
             string sync = GetSync(d1Trend, h1Trend);
             string h1Structure = GetH1Structure(h1Index, h1Trend);
             string h1Health = GetH1Health(h1Index, h1Trend);
@@ -184,14 +192,16 @@ H1 ATR20 : {h1AtrPips:F1} ({atrPercent:F0}%) - {atrStatus}
 
 --- D1 ---
 Trend      : {d1Trend}
-EMAs      : {d1EmasAligned}
-Carril 8    : {d1NearEma8}
+DI14       : {d1Directional}
+EMAs       : {d1EmasAligned}
+Carril 8   : {d1NearEma8}
 Phase      : {d1Phase}
 Fuerza MKD : {d1Health}
 Mom        : {d1Momentum}
 
 --- H1 ---
 Trend      : {h1Trend}
+DI14       : {h1Directional}
 Sync       : {sync}
 Struct     : {h1Structure}
 Fuerza MKD : {h1Health}
@@ -505,6 +515,47 @@ Swing      : {swingStatus}";
             return "BUSCANDO";
         }
 
+        private string GetDirectionalStatus(
+    DirectionalMovementSystem dms,
+    int index,
+    string trend)
+{
+    double diPlus = dms.DIPlus[index];
+    double diMinus = dms.DIMinus[index];
+    double adx = dms.ADX[index];
+
+    if (Math.Abs(diPlus - diMinus) < 3.0)
+        return "Neutral | Sin Señal";
+
+    bool diBullish = diPlus > diMinus;
+    bool trendBullish = trend.Contains("Alcista") || trend == "ALCISTA";
+    bool trendBearish = trend.Contains("Bajista") || trend == "BAJISTA";
+
+    string movement;
+
+    if (trendBullish)
+        movement = diBullish ? "Push Alcista" : "Pullback Bajista";
+    else if (trendBearish)
+        movement = diBullish ? "Pullback Alcista" : "Push Bajista";
+    else
+        movement = diBullish ? "Push Alcista" : "Push Bajista";
+
+    string status;
+
+    if (adx < 20.0)
+        status = "Débil";
+    else if (adx < 25.0)
+        status = "En Desarrollo";
+    else if (adx < 40.0)
+        status = "Activo";
+    else if (adx < 60.0)
+        status = "Fuerte";
+    else
+        status = "Fuerte XL";
+
+    return movement + " | " + status;
+}
+
         private string GetD1Trend(int index)
 {
     // 1. MATEMÁTICA: Medimos la distancia absoluta entre la EMA8 y la EMA21
@@ -543,7 +594,7 @@ Swing      : {swingStatus}";
 }
 
 
-        private string GetH1Trend(int index)
+        private string GetH1Trend(int index)    
         {
             if (_h1Ema8.Result[index] > _h1Ema21.Result[index] &&
                 _h1Ema21.Result[index] > _h1Ema50.Result[index])
