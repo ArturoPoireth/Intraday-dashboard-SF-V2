@@ -752,12 +752,15 @@ Swing      : {swingStatus}";
     return differencePercent >= AoDifferenceTolerancePercent;
 }
  
-        private string GetD1Health(int index, string d1Trend)
+private string GetD1Health(int index, string d1Trend)
 {
-    if (!d1Trend.Contains("| Check"))
-        return "No Aplica | Pend";
+    bool trendBullish = d1Trend.Contains("Alcista");
+    bool trendBearish = d1Trend.Contains("Bajista");
 
-    if (d1Trend.Contains("Alcista"))
+    if (!trendBullish && !trendBearish)
+        return "No Aplica | Info";
+
+    if (trendBullish)
     {
         double high1, high2;
         int highBar1, highBar2;
@@ -770,33 +773,33 @@ Swing      : {swingStatus}";
             out highBar2);
 
         if (!foundHighs)
-            return "Sin Datos | Pend";
+            return "Sin Datos | Info";
 
         if (index - highBar2 > AoMaxPivotAgeD1)
-            return "Referencia Antigua | Pend";
+            return "Referencia Antigua | Info";
 
         if (high2 <= high1)
-            return "Sin Confirmación | Pend";
+            return "Sin Confirmación | Info";
 
         double ao1 = GetD1AOMaxAroundPivot(highBar1, 2);
         double ao2 = GetD1AOMaxAroundPivot(highBar2, 2);
 
         if (ao1 <= 0 || ao2 <= 0)
-            return "Sin Confirmación | Pend";
+            return "Sin Confirmación | Info";
 
-if (!IsAoDifferenceSignificant(ao1, ao2))
-    return "Sin Confirmación | Pend";
+        if (!IsAoDifferenceSignificant(ao1, ao2))
+            return "Sin Confirmación | Info";
 
         if (ao2 > ao1)
-            return "Convergencia Alcista | Check";
+            return "Convergencia Alcista | Info";
 
         if (ao2 < ao1)
-            return "Divergencia Bajista | Pend";
+            return "Divergencia Bajista | Info";
 
-        return "Sin Confirmación | Pend";
+        return "Sin Confirmación | Info";
     }
 
-    if (d1Trend.Contains("Bajista"))
+    if (trendBearish)
     {
         double low1, low2;
         int lowBar1, lowBar2;
@@ -809,33 +812,33 @@ if (!IsAoDifferenceSignificant(ao1, ao2))
             out lowBar2);
 
         if (!foundLows)
-            return "Sin Datos | Pend";
+            return "Sin Datos | Info";
 
         if (index - lowBar2 > AoMaxPivotAgeD1)
-            return "Referencia Antigua | Pend";
+            return "Referencia Antigua | Info";
 
         if (low2 >= low1)
-            return "Sin Confirmación | Pend";
+            return "Sin Confirmación | Info";
 
         double ao1 = GetD1AOMinAroundPivot(lowBar1, 2);
         double ao2 = GetD1AOMinAroundPivot(lowBar2, 2);
 
         if (ao1 >= 0 || ao2 >= 0)
-            return "Sin Confirmación | Pend";
+            return "Sin Confirmación | Info";
 
-if (!IsAoDifferenceSignificant(ao1, ao2))
-    return "Sin Confirmación | Pend";
+        if (!IsAoDifferenceSignificant(ao1, ao2))
+            return "Sin Confirmación | Info";
 
         if (ao2 < ao1)
-            return "Convergencia Bajista | Check";
+            return "Convergencia Bajista | Info";
 
         if (ao2 > ao1)
-            return "Divergencia Alcista | Pend";
+            return "Divergencia Alcista | Info";
 
-        return "Sin Confirmación | Pend";
+        return "Sin Confirmación | Info";
     }
 
-    return "No Aplica | Pend";
+    return "No Aplica | Info";
 }
 
         private string GetD1Momentum(int index)
