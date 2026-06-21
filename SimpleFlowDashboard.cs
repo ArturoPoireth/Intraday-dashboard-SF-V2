@@ -8,7 +8,7 @@ namespace cAlgo.Robots
     public class SimpleFlowDashboard_v20 : Robot
     {
         [Parameter("Carril 8 ATR Threshold", DefaultValue = 0.45, MinValue = 0.20, MaxValue = 0.75, Step = 0.05)]
-public double Ema8ProximityThreshold { get; set; }
+        public double Ema8ProximityThreshold { get; set; }
 
         [Parameter("Trend Min Separation (%)", DefaultValue = 7.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
         public double TrendMinSeparationPercent { get; set; }
@@ -53,6 +53,13 @@ public double Ema8ProximityThreshold { get; set; }
 
         private DirectionalMovementSystem _d1Dms14;
         private DirectionalMovementSystem _h1Dms14;
+
+        private enum SyncState
+        {
+            Off,
+            ZonaConfirmacion,
+            On
+        }
 
         private enum EstadoSwing
         {
@@ -197,13 +204,18 @@ string d1NearEma8 = d1InEma8Range
 
             string h1Trend = GetH1Trend(h1Index);
             string h1Directional = GetDirectionalStatus(_h1Dms14, h1Index, h1Trend);
-            string sync = GetSync(d1Trend, h1Trend);
+            SyncState syncState = GetSyncState(
+                                  d1Trend,
+                                  h1Trend,
+                                  h1Index);
+
+string sync = GetSyncDisplayText(syncState);
             string h1TrendDisplay =
                h1Trend == "ALCISTA" ? "Alcista" :
                h1Trend == "BAJISTA" ? "Bajista" :
                 "Sin Tendencia";
             string h1Structure = GetH1Structure(h1Index, h1Trend);
-            string h1Health = GetH1Health(h1Index, h1Trend, sync);
+            string h1Health = GetH1Health(h1Index, h1Trend, syncState);
             string h1Momentum = GetH1Momentum(h1Index);
             string swingStatus = GetSwingStatusText();
 
@@ -626,20 +638,57 @@ Swing      : {swingStatus}";
     return ema21 > ema50 ? "ALCISTA" : "BAJISTA";
 }
 
-        private string GetSync(string d1Trend, string h1Trend)
+private SyncState GetSyncState(
+    string d1Trend,
+    string h1Trend,
+    int h1Index)
 {
-    bool d1Bullish = d1Trend.Contains("Alcista");
-    bool d1Bearish = d1Trend.Contains("Bajista");
+    if (!d1Trend.Contains("| Check"))
+        return SyncState.Off;
 
-    if (d1Bullish && h1Trend == "ALCISTA")
+    bool sameBullishDirection =
+        d1Trend.Contains("Alcista") &&
+        h1Trend == "ALCISTA";
+
+    bool sameBearishDirection =
+        d1Trend.Contains("Bajista") &&
+        h1Trend == "BAJISTA";
+
+    if (!sameBullishDirection && !sameBearishDirection)
+        return SyncState.Off;
+
+    double atr = _h1Atr20.Result[h1Index];
+
+    if (atr <= 0)
+        return SyncState.Off;
+
+    double separation = Math.Abs(
+        _h1Ema21.Result[h1Index] -
+        _h1Ema50.Result[h1Index]);
+
+    double checkPercent = Math.Max(
+        TrendMinSeparationPercent,
+        TrendCheckSeparationPercent);
+
+    double checkThreshold =
+        atr * (checkPercent / 100.0);
+
+    if (separation >= checkThreshold)
+        return SyncState.On;
+
+    return SyncState.ZonaConfirmacion;
+}
+    private string GetSyncDisplayText(SyncState syncState)
+{
+    if (syncState == SyncState.On)
         return "On";
 
-    if (d1Bearish && h1Trend == "BAJISTA")
-        return "On";
+    if (syncState == SyncState.ZonaConfirmacion)
+        return "Zona de Confirmación";
 
     return "Off";
 }
-
+ 
         private bool AreD1EmasAligned(int index)
         {
             bool bullish = _d1Ema8.Result[index] > _d1Ema21.Result[index] &&
@@ -751,8 +800,7 @@ Swing      : {swingStatus}";
 
     return differencePercent >= AoDifferenceTolerancePercent;
 }
- 
-private string GetD1Health(int index, string d1Trend)
+    private string GetD1Health(int index, string d1Trend)
 {
     bool trendBullish = d1Trend.Contains("Alcista");
     bool trendBearish = d1Trend.Contains("Bajista");
@@ -877,10 +925,13 @@ private string GetD1Health(int index, string d1Trend)
             return "NEUTRAL";
         }
 
-        private string GetH1Health(int index, string h1Trend, string sync)
+        private string GetH1Health(
+                   int index,
+                string h1Trend,
+                       SyncState syncState)
 {
-    if (sync != "On")
-        return "No Aplica | Pend";
+    if (syncState == SyncState.Off)
+    return "No Aplica | Pend";
 
     if (h1Trend == "ALCISTA")
     {
