@@ -61,6 +61,21 @@ namespace cAlgo.Robots
             On
         }
 
+        private enum MarketDirection
+        {
+             None,
+             Alcista,
+             Bajista
+        }
+
+        private enum FiltersState
+        {
+              SinSetup,
+              DarSeguimiento,
+              AltaPrioridad,
+              SetupOptimo
+        }
+
         private enum EstadoSwing
         {
             BuscandoSwing,
@@ -70,6 +85,9 @@ namespace cAlgo.Robots
         }
 
         private EstadoSwing _estado = EstadoSwing.BuscandoSwing;
+
+        private bool _h1PullbackValidated = false;
+        private MarketDirection _h1PullbackDirection = MarketDirection.None;
 
         private string _direccion = "NO";
 
@@ -200,8 +218,7 @@ string d1NearEma8 = d1InEma8Range
             ProcesarSwingFiboD1(d1Index);
             string d1Phase = GetD1Phase(d1Trend, d1Index);
             string d1Health = GetD1Health(d1Index, d1Trend);
-            string d1Momentum = GetD1Momentum(d1Index);
-
+            
             string h1Trend = GetH1Trend(h1Index);
             string h1Directional = GetDirectionalStatus(_h1Dms14, h1Index, h1Trend);
             SyncState syncState = GetSyncState(
@@ -214,32 +231,77 @@ string sync = GetSyncDisplayText(syncState);
                h1Trend == "ALCISTA" ? "Alcista" :
                h1Trend == "BAJISTA" ? "Bajista" :
                 "Sin Tendencia";
-            string h1Structure = GetH1Structure(h1Index, h1Trend);
             string h1Health = GetH1Health(h1Index, h1Trend, syncState);
-            string h1Momentum = GetH1Momentum(h1Index);
             string swingStatus = GetSwingStatusText();
+bool d1TrendConfirmed =
+    d1Trend.Contains("| Check");
+
+bool d1EmasConfirmed =
+    d1EmasAligned == "Alineadas | Check";
+
+bool d1CarrilConfirmed =
+    d1InEma8Range;
+
+bool d1PhaseConfirmed =
+    d1Phase.StartsWith("F2 -") &&
+    d1Phase.Contains("| Check");
+
+bool d1Ready =
+    d1TrendConfirmed &&
+    d1EmasConfirmed &&
+    d1CarrilConfirmed &&
+    d1PhaseConfirmed;
+
+bool h1IndicatorConfirmed =
+    h1Health.Contains("Convergencia") &&
+    h1Health.Contains("| Check");
+
+bool h1SwingReady =
+    _estado == EstadoSwing.SwingActivo ||
+    _estado == EstadoSwing.SwingCongelado;
+
+UpdateH1PullbackMemory(
+    d1Ready,
+    syncState,
+    h1Trend,
+    h1Index,
+    h1SwingReady);
+
+int filtersScore = CalculateFiltersScore(
+    d1TrendConfirmed,
+    d1EmasConfirmed,
+    d1CarrilConfirmed,
+    d1PhaseConfirmed,
+    syncState,
+    h1IndicatorConfirmed,
+    h1SwingReady,
+    _h1PullbackValidated);
+
+FiltersState filtersState =
+    GetFiltersState(filtersScore);
+
+string filtersStateText =
+    GetFiltersStateText(filtersState);
+
 
         
            string dashboard =
 $@"D1 ATR20 : {d1AtrPips:F1}
 H1 ATR20 : {h1AtrPips:F1} ({atrPercent:F0}%) - {atrStatus}
+Filtros  : {filtersScore}% | {filtersStateText}
 
 --- D1 ---
-Trend      : {d1Trend}
-DI14       : {d1Directional}
-EMAs       : {d1EmasAligned}
-Carril 8   : {d1NearEma8}
-Phase      : {d1Phase}
-Indicador  : {d1Health}
-Mom        : {d1Momentum}
+Trend     : {d1Trend}
+EMAs      : {d1EmasAligned}
+Carril 8  : {d1NearEma8}
+Phase     : {d1Phase}
+Indicador : {d1Health}
 
 --- H1 ---
-Trend      : {h1TrendDisplay} | Sync {sync}
-DI14       : {h1Directional}
-Struct     : {h1Structure}
-Indicador  : {h1Health}
-Mom        : {h1Momentum}
-Swing      : {swingStatus}";
+Trend     : {h1TrendDisplay} | Sync {sync}
+Indicador : {h1Health}
+Swing/Fibo: {swingStatus}
+DI14      : {h1Directional}";
 
             DrawTextPanel(dashboard);
         }
@@ -513,6 +575,9 @@ Swing      : {swingStatus}";
             _estado = EstadoSwing.BuscandoSwing;
             _direccion = "NO";
 
+            _h1PullbackValidated = false;
+            _h1PullbackDirection = MarketDirection.None;
+
             _originBar = -1;
             _endBar = -1;
             _activatedBar = -1;
@@ -689,6 +754,154 @@ private SyncState GetSyncState(
     return "Off";
 }
  
+private string GetFiltersStateText(FiltersState filtersState)
+{
+
+    if (filtersState == FiltersState.SetupOptimo)
+        return "Setup Óptimo | Esperar Gatillo";
+
+    if (filtersState == FiltersState.AltaPrioridad)
+        return "Alta Prioridad";
+
+    if (filtersState == FiltersState.DarSeguimiento)
+        return "Dar Seguimiento";
+
+    return "Sin Setup";
+}
+
+private int CalculateFiltersScore(
+    bool d1TrendConfirmed,
+    bool d1EmasConfirmed,
+    bool d1CarrilConfirmed,
+    bool d1PhaseConfirmed,
+    SyncState syncState,
+    bool h1IndicatorConfirmed,
+    bool h1SwingReady,
+    bool h1PullbackValidated)
+{
+    int score = 0;
+
+    if (d1TrendConfirmed)
+        score += 10;
+
+    if (d1EmasConfirmed)
+        score += 10;
+
+    if (d1CarrilConfirmed)
+        score += 5;
+
+    if (d1PhaseConfirmed)
+        score += 25;
+
+    bool d1Ready =
+        d1TrendConfirmed &&
+        d1EmasConfirmed &&
+        d1CarrilConfirmed &&
+        d1PhaseConfirmed;
+
+    if (!d1Ready)
+        return score;
+
+    if (syncState == SyncState.On)
+        score += 15;
+    else if (syncState == SyncState.ZonaConfirmacion)
+        score += 10;
+    else
+        return score;
+
+    if (h1IndicatorConfirmed)
+        score += 15;
+
+    if (h1SwingReady)
+        score += 10;
+
+    if (h1PullbackValidated)
+        score += 10;
+
+    return score;
+}
+
+private FiltersState GetFiltersState(int score)
+{
+    if (score >= 100)
+        return FiltersState.SetupOptimo;
+
+    if (score >= 80)
+        return FiltersState.AltaPrioridad;
+
+    if (score >= 50)
+        return FiltersState.DarSeguimiento;
+
+    return FiltersState.SinSetup;
+}
+
+private MarketDirection GetH1MarketDirection(string h1Trend)
+{
+    if (h1Trend == "ALCISTA")
+        return MarketDirection.Alcista;
+
+    if (h1Trend == "BAJISTA")
+        return MarketDirection.Bajista;
+
+    return MarketDirection.None;
+}
+
+private bool IsH1Pullback(
+    int h1Index,
+    MarketDirection direction)
+{
+    double diPlus = _h1Dms14.DIPlus[h1Index];
+    double diMinus = _h1Dms14.DIMinus[h1Index];
+
+    if (Math.Abs(diPlus - diMinus) < 3.0)
+        return false;
+
+    if (direction == MarketDirection.Alcista)
+        return diMinus > diPlus;
+
+    if (direction == MarketDirection.Bajista)
+        return diPlus > diMinus;
+
+    return false;
+}
+
+private void UpdateH1PullbackMemory(
+    bool d1Ready,
+    SyncState syncState,
+    string h1Trend,
+    int h1Index,
+    bool h1SwingReady)
+{
+    MarketDirection currentDirection =
+        GetH1MarketDirection(h1Trend);
+
+    bool mustReset =
+        !d1Ready ||
+        syncState == SyncState.Off ||
+        currentDirection == MarketDirection.None ||
+        !h1SwingReady;
+
+    if (mustReset)
+    {
+        _h1PullbackValidated = false;
+        _h1PullbackDirection = MarketDirection.None;
+        return;
+    }
+
+    if (_h1PullbackDirection != MarketDirection.None &&
+        _h1PullbackDirection != currentDirection)
+    {
+        _h1PullbackValidated = false;
+        _h1PullbackDirection = MarketDirection.None;
+    }
+
+    if (IsH1Pullback(h1Index, currentDirection))
+    {
+        _h1PullbackValidated = true;
+        _h1PullbackDirection = currentDirection;
+    }
+}
+
         private bool AreD1EmasAligned(int index)
         {
             bool bullish = _d1Ema8.Result[index] > _d1Ema21.Result[index] &&
@@ -889,42 +1102,6 @@ private SyncState GetSyncState(
     return "No Aplica | Info";
 }
 
-        private string GetD1Momentum(int index)
-        {
-            double ao = CalculateD1AO(index);
-
-            if (ao > 0)
-                return "ALCISTA";
-
-            if (ao < 0)
-                return "BAJISTA";
-
-            return "NEUTRAL";
-        }
-
-        private string GetH1Structure(int index, string h1Trend)
-        {
-            double high1, high2, low1, low2;
-            int highBar1, highBar2, lowBar1, lowBar2;
-
-            bool foundHighs = FindLastTwoH1SwingHighs(index, out high1, out high2, out highBar1, out highBar2);
-            bool foundLows = FindLastTwoH1SwingLows(index, out low1, out low2, out lowBar1, out lowBar2);
-
-            if (!foundHighs || !foundLows)
-                return "NEUTRAL";
-
-            bool bullishStructure = low2 > low1 && high2 > high1;
-            bool bearishStructure = high2 < high1 && low2 < low1;
-
-            if (h1Trend == "ALCISTA" && bullishStructure)
-                return "SANA COMPRA";
-
-            if (h1Trend == "BAJISTA" && bearishStructure)
-                return "SANA VENTA";
-
-            return "NEUTRAL";
-        }
-
         private string GetH1Health(
                    int index,
                 string h1Trend,
@@ -1015,52 +1192,7 @@ private SyncState GetSyncState(
     return "No Aplica | Pend";
 }
 
-        private string GetH1Momentum(int index)
-        {
-            double ao0 = CalculateH1AO(index - 4);
-            double ao1 = CalculateH1AO(index - 3);
-            double ao2 = CalculateH1AO(index - 2);
-            double ao3 = CalculateH1AO(index - 1);
-            double ao4 = CalculateH1AO(index);
-
-            bool allPositive = ao0 > 0 && ao1 > 0 && ao2 > 0 && ao3 > 0 && ao4 > 0;
-            bool allNegative = ao0 < 0 && ao1 < 0 && ao2 < 0 && ao3 < 0 && ao4 < 0;
-
-            bool increasing = ao1 > ao0 && ao2 > ao1 && ao3 > ao2 && ao4 > ao3;
-            bool decreasing = ao1 < ao0 && ao2 < ao1 && ao3 < ao2 && ao4 < ao3;
-
-            int positiveReductions = 0;
-            if (ao1 < ao0) positiveReductions++;
-            if (ao2 < ao1) positiveReductions++;
-            if (ao3 < ao2) positiveReductions++;
-            if (ao4 < ao3) positiveReductions++;
-
-            int negativeWeakening = 0;
-            if (ao1 > ao0) negativeWeakening++;
-            if (ao2 > ao1) negativeWeakening++;
-            if (ao3 > ao2) negativeWeakening++;
-            if (ao4 > ao3) negativeWeakening++;
-
-            if (allPositive && positiveReductions >= 3)
-                return "AGOT ALC";
-
-            if (allNegative && negativeWeakening >= 3)
-                return "AGOT BAJ";
-
-            if (allPositive && increasing)
-                return "ALC CREC";
-
-            if (allPositive && decreasing)
-                return "ALC DECR";
-
-            if (allNegative && decreasing)
-                return "BAJ CREC";
-
-            if (allNegative && increasing)
-                return "BAJ DECR";
-
-            return "NEUTRAL";
-        }
+        
 
         private double GetD1AOMaxAroundPivot(int pivotIndex, int window)
         {
