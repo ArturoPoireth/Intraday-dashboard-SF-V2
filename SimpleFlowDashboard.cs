@@ -1120,6 +1120,19 @@ private void UpdateH1PullbackMemory(
 
     return differencePercent >= AoDifferenceTolerancePercent;
 }
+
+
+private bool IsAoHigher(double previousAo, double currentAo)
+{
+    return currentAo > previousAo &&
+           IsAoDifferenceSignificant(previousAo, currentAo);
+}
+
+private bool IsAoLower(double previousAo, double currentAo)
+{
+    return currentAo < previousAo &&
+           IsAoDifferenceSignificant(previousAo, currentAo);
+}
     private string GetD1Health(int index, string d1Trend)
 {
     bool trendBullish = d1Trend.Contains("Alcista");
@@ -1127,6 +1140,38 @@ private void UpdateH1PullbackMemory(
 
     if (!trendBullish && !trendBearish)
         return "No Aplica | Info";
+
+        string structuralResult;
+
+if (TryGetD1StructuralIndicator(index, d1Trend, out structuralResult))
+    return structuralResult;
+
+    double ao = CalculateD1AO(index);
+
+    if (trendBullish && ao > 0)
+        return "Convergencia Alcista | Info";
+
+    if (trendBullish && ao < 0)
+        return "Divergencia Bajista | Info";
+
+    if (trendBearish && ao < 0)
+        return "Convergencia Bajista | Info";
+
+    if (trendBearish && ao > 0)
+        return "Divergencia Alcista | Info";
+
+    return "Sin Confirmación | Info";
+}
+
+private bool TryGetD1StructuralIndicator(
+    int index,
+    string d1Trend,
+    out string result)
+{
+    result = null;
+
+    bool trendBullish = d1Trend.Contains("Alcista");
+    bool trendBearish = d1Trend.Contains("Bajista");
 
     if (trendBullish)
     {
@@ -1141,30 +1186,30 @@ private void UpdateH1PullbackMemory(
             out highBar2);
 
         if (!foundHighs)
-            return "Sin Datos | Info";
+            return false;
 
         if (index - highBar2 > AoMaxPivotAgeD1)
-            return "Referencia Antigua | Info";
-
-        if (high2 <= high1)
-            return "Sin Confirmación | Info";
+            return false;
 
         double ao1 = GetD1AOMaxAroundPivot(highBar1, 2);
         double ao2 = GetD1AOMaxAroundPivot(highBar2, 2);
 
         if (ao1 <= 0 || ao2 <= 0)
-            return "Sin Confirmación | Info";
+            return false;
 
-        if (!IsAoDifferenceSignificant(ao1, ao2))
-            return "Sin Confirmación | Info";
+        if (high2 > high1 && IsAoHigher(ao1, ao2))
+        {
+            result = "Convergencia Alcista | Info";
+            return true;
+        }
 
-        if (ao2 > ao1)
-            return "Convergencia Alcista | Info";
+        if (high2 > high1 && IsAoLower(ao1, ao2))
+        {
+            result = "Divergencia Bajista | Info";
+            return true;
+        }
 
-        if (ao2 < ao1)
-            return "Divergencia Bajista | Info";
-
-        return "Sin Confirmación | Info";
+        return false;
     }
 
     if (trendBearish)
@@ -1180,44 +1225,82 @@ private void UpdateH1PullbackMemory(
             out lowBar2);
 
         if (!foundLows)
-            return "Sin Datos | Info";
+            return false;
 
         if (index - lowBar2 > AoMaxPivotAgeD1)
-            return "Referencia Antigua | Info";
-
-        if (low2 >= low1)
-            return "Sin Confirmación | Info";
+            return false;
 
         double ao1 = GetD1AOMinAroundPivot(lowBar1, 2);
         double ao2 = GetD1AOMinAroundPivot(lowBar2, 2);
 
         if (ao1 >= 0 || ao2 >= 0)
-            return "Sin Confirmación | Info";
+            return false;
 
-        if (!IsAoDifferenceSignificant(ao1, ao2))
-            return "Sin Confirmación | Info";
+        if (low2 < low1 && IsAoLower(ao1, ao2))
+        {
+            result = "Convergencia Bajista | Info";
+            return true;
+        }
 
-        if (ao2 < ao1)
-            return "Convergencia Bajista | Info";
+        if (low2 < low1 && IsAoHigher(ao1, ao2))
+        {
+            result = "Divergencia Alcista | Info";
+            return true;
+        }
 
-        if (ao2 > ao1)
-            return "Divergencia Alcista | Info";
-
-        return "Sin Confirmación | Info";
+        return false;
     }
 
-    return "No Aplica | Info";
+    return false;
+}
+ 
+ private string GetH1Health(
+    int index,
+    string h1Trend,
+    SyncState syncState)
+{
+    if (syncState != SyncState.On)
+        return "No Aplica | Pend";
+
+    bool trendBullish = h1Trend == "ALCISTA";
+    bool trendBearish = h1Trend == "BAJISTA";
+
+    if (!trendBullish && !trendBearish)
+        return "No Aplica | Pend";
+
+        string structuralResult;
+
+if (TryGetH1StructuralIndicator(index, h1Trend, out structuralResult))
+    return structuralResult;
+
+    double ao = CalculateH1AO(index);
+
+    if (trendBullish && ao > 0)
+        return "Convergencia Alcista | Check";
+
+    if (trendBullish && ao < 0)
+        return "Divergencia Bajista | Pend";
+
+    if (trendBearish && ao < 0)
+        return "Convergencia Bajista | Check";
+
+    if (trendBearish && ao > 0)
+        return "Divergencia Alcista | Pend";
+
+    return "Sin Confirmación | Pend";
 }
 
-        private string GetH1Health(
-                   int index,
-                string h1Trend,
-                       SyncState syncState)
+private bool TryGetH1StructuralIndicator(
+    int index,
+    string h1Trend,
+    out string result)
 {
-    if (syncState == SyncState.Off)
-    return "No Aplica | Pend";
+    result = null;
 
-    if (h1Trend == "ALCISTA")
+    bool trendBullish = h1Trend == "ALCISTA";
+    bool trendBearish = h1Trend == "BAJISTA";
+
+    if (trendBullish)
     {
         double high1, high2;
         int highBar1, highBar2;
@@ -1230,34 +1313,33 @@ private void UpdateH1PullbackMemory(
             out highBar2);
 
         if (!foundHighs)
-            return "Sin Datos | Pend";
+            return false;
 
-         if (index - highBar2 > AoMaxPivotAgeH1)
-            return "Referencia Antigua | Pend";
-
-        if (high2 <= high1)
-            return "Sin Confirmación | Pend";
+        if (index - highBar2 > AoMaxPivotAgeH1)
+            return false;
 
         double ao1 = GetH1AOMaxAroundPivot(highBar1, 2);
         double ao2 = GetH1AOMaxAroundPivot(highBar2, 2);
 
         if (ao1 <= 0 || ao2 <= 0)
-            return "Sin Confirmación | Pend";
+            return false;
 
-        if (!IsAoDifferenceSignificant(ao1, ao2))
-            return "Sin Confirmación | Pend";
+        if (high2 > high1 && IsAoHigher(ao1, ao2))
+        {
+            result = "Convergencia Alcista | Check";
+            return true;
+        }
 
+        if (high2 > high1 && IsAoLower(ao1, ao2))
+        {
+            result = "Divergencia Bajista | Pend";
+            return true;
+        }
 
-        if (ao2 > ao1)
-            return "Convergencia Alcista | Check";
-
-        if (ao2 < ao1)
-            return "Divergencia Bajista | Pend";
-
-        return "Sin Confirmación | Pend";
+        return false;
     }
 
-    if (h1Trend == "BAJISTA")
+    if (trendBearish)
     {
         double low1, low2;
         int lowBar1, lowBar2;
@@ -1270,36 +1352,34 @@ private void UpdateH1PullbackMemory(
             out lowBar2);
 
         if (!foundLows)
-            return "Sin Datos | Pend";
+            return false;
 
         if (index - lowBar2 > AoMaxPivotAgeH1)
-            return "Referencia Antigua | Pend";
-
-        if (low2 >= low1)
-            return "Sin Confirmación | Pend";
+            return false;
 
         double ao1 = GetH1AOMinAroundPivot(lowBar1, 2);
         double ao2 = GetH1AOMinAroundPivot(lowBar2, 2);
 
         if (ao1 >= 0 || ao2 >= 0)
-            return "Sin Confirmación | Pend";
+            return false;
 
-        if (!IsAoDifferenceSignificant(ao1, ao2))
-            return "Sin Confirmación | Pend";
+        if (low2 < low1 && IsAoLower(ao1, ao2))
+        {
+            result = "Convergencia Bajista | Check";
+            return true;
+        }
 
-        if (ao2 < ao1)
-            return "Convergencia Bajista | Check";
+        if (low2 < low1 && IsAoHigher(ao1, ao2))
+        {
+            result = "Divergencia Alcista | Pend";
+            return true;
+        }
 
-        if (ao2 > ao1)
-            return "Divergencia Alcista | Pend";
-
-        return "Sin Confirmación | Pend";
+        return false;
     }
 
-    return "No Aplica | Pend";
+    return false;
 }
-
-        
 
         private double GetD1AOMaxAroundPivot(int pivotIndex, int window)
         {
