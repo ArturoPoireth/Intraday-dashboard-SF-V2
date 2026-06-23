@@ -28,13 +28,16 @@ namespace cAlgo.Robots
         [Parameter("Pivot Strength", DefaultValue = 3)]
         public int PivotStrength { get; set; }
 
-        [Parameter("Min Swing Size", DefaultValue = 100)]
-        public double MinSwingSize { get; set; }
+        [Parameter("Min Swing ATR (%)", DefaultValue = 50.0, MinValue = 20.0, MaxValue = 150.0, Step = 5.0)]
+        public double MinSwingAtrPercent { get; set; }
 
         [Parameter("Max Swing Life Bars", DefaultValue = 36)]
         public int MaxSwingLifeBars { get; set; }
 
-        [Parameter("Max Candidate Life Bars", DefaultValue = 6)]
+        [Parameter("Max Frozen Life Bars", DefaultValue = 24, MinValue = 6, MaxValue = 120, Step = 1)]
+        public int MaxFrozenLifeBars { get; set; }
+
+        [Parameter("Max Candidate Life Bars", DefaultValue = 12, MinValue = 3, MaxValue = 48, Step = 1)]
         public int MaxCandidateLifeBars { get; set; }
 
         private Bars _h1Bars;
@@ -94,12 +97,15 @@ namespace cAlgo.Robots
         private int _originBar = -1;
         private int _endBar = -1;
         private int _activatedBar = -1;
+        private int _frozenBar = -1;
+        private int _lastProcessedH1Index = -1;
         // --- MEMORIA ESTRUCTURAL CONGELADA D1 ---
         private double _lastConfirmedD1SwingHigh = double.NaN;
         private double _lastConfirmedD1SwingLow = double.NaN;
 
         private double _originPrice = 0;
         private double _endPrice = 0;
+        private double _candidateBosLevel = double.NaN;
 
         private double _level0 = 0;
         private double _level382 = 0;
@@ -158,6 +164,13 @@ namespace cAlgo.Robots
                 DrawDashboard();
                 return;
             }
+
+         if (index == _lastProcessedH1Index)
+            {
+              DrawDashboard();
+        return;
+            }
+_lastProcessedH1Index = index;
 
             ProcesarSwingFibo(index);
             GestionarDibujo();
@@ -232,7 +245,7 @@ string sync = GetSyncDisplayText(syncState);
                h1Trend == "BAJISTA" ? "Bajista" :
                 "Sin Tendencia";
             string h1Health = GetH1Health(h1Index, h1Trend, syncState);
-            string swingStatus = GetSwingStatusText();
+            
 bool d1TrendConfirmed =
     d1Trend.Contains("| Check");
 
@@ -259,6 +272,34 @@ bool h1IndicatorConfirmed =
 bool h1SwingReady =
     _estado == EstadoSwing.SwingActivo ||
     _estado == EstadoSwing.SwingCongelado;
+
+    bool h1SwingOperational =
+    h1SwingReady &&
+    d1Ready &&
+    syncState != SyncState.Off;
+
+string swingStatus = GetSwingStatusText();
+
+if ((_estado == EstadoSwing.SwingActivo ||
+     _estado == EstadoSwing.SwingCongelado) &&
+    !h1SwingOperational)
+{
+    string swingDirection =
+        _direccion == "ALCISTA" ? "Alcista" : "Bajista";
+
+    swingStatus = "Impulso " + swingDirection + " | Info";
+}
+else if (h1SwingOperational)
+{
+    swingStatus += " | Check";
+}
+else if (_estado == EstadoSwing.SwingCandidato)
+{
+    swingStatus += " | Info";
+}
+
+
+
 
 UpdateH1PullbackMemory(
     d1Ready,
@@ -310,37 +351,71 @@ DI14      : {h1Directional}";
         {
             int candidate = index - PivotStrength;
 
-            bool emaBullish = _h1Ema8.Result[index] > _h1Ema21.Result[index] && _h1Ema21.Result[index] > _h1Ema50.Result[index];
-            bool emaBearish = _h1Ema8.Result[index] < _h1Ema21.Result[index] && _h1Ema21.Result[index] < _h1Ema50.Result[index];
+        int d1Index = _d1Bars.Count - 2;
+string d1Trend = GetD1Trend(d1Index);
+
+bool contextoAlcista =
+    d1Trend.Contains("Alcista") &&
+    d1Trend.Contains("| Check");
+
+bool contextoBajista =
+    d1Trend.Contains("Bajista") &&
+    d1Trend.Contains("| Check");
 
             bool pivotLow = IsH1SwingLow(candidate, PivotStrength);
             bool pivotHigh = IsH1SwingHigh(candidate, PivotStrength);
+            bool swingEnProceso =
+    _estado == EstadoSwing.SwingCandidato ||
+    _estado == EstadoSwing.SwingActivo ||
+    _estado == EstadoSwing.SwingCongelado;
+
+bool origenRoto =
+    (_direccion == "ALCISTA" &&
+     _h1Bars.ClosePrices[index] < _originPrice) ||
+    (_direccion == "BAJISTA" &&
+     _h1Bars.ClosePrices[index] > _originPrice);
+
+if (swingEnProceso && origenRoto)
+{
+    Print("SWING INVALIDADO: cierre H1 rompió el origen estructural.");
+    ReiniciarSwing();
+    return;
+}
 
             if (_estado == EstadoSwing.BuscandoSwing)
             {
-                if (emaBearish && pivotHigh)
-                    CrearCandidatoBajista(candidate);
-                else if (emaBullish && pivotLow)
-                    CrearCandidatoAlcista(candidate);
+                if (contextoBajista && pivotHigh)
+    CrearCandidatoBajista(candidate);
+else if (contextoAlcista && pivotLow)
+    CrearCandidatoAlcista(candidate);
             }
 
-            if (_estado == EstadoSwing.SwingCandidato)
+            else if (_estado == EstadoSwing.SwingCandidato)
             {
                 ActualizarFinDinamico(index);
                 CalcularNiveles();
 
-                int candidateAge = index - _originBar;
+                int candidateAge = index - (_originBar + PivotStrength);
                 double range = Math.Abs(_originPrice - _endPrice);
+                double minSwingRange = _h1Atr20.Result[index] * (MinSwingAtrPercent / 100.0);
+                bool bosConfirmed =
+                 !double.IsNaN(_candidateBosLevel) &&
+                 ((_direccion == "ALCISTA" &&
+                    _h1Bars.ClosePrices[index] > _candidateBosLevel) ||
+                  (_direccion == "BAJISTA" &&
+                   _h1Bars.ClosePrices[index] < _candidateBosLevel));
                 bool swingTieneMasDeUnaVela = _originBar != _endBar;
 
-                if (candidateAge >= MaxCandidateLifeBars)
+                if (candidateAge > MaxCandidateLifeBars)
                 {
                     Print("SWING CANDIDATO EXPIRADO: no alcanzó rango mínimo dentro del tiempo permitido.");
                     ReiniciarSwing();
                     return;
                 }
 
-                if (range >= MinSwingSize && swingTieneMasDeUnaVela)
+                if (range >= minSwingRange &&
+                     swingTieneMasDeUnaVela &&
+                     bosConfirmed)
                 {
                     _estado = EstadoSwing.SwingActivo;
                     _activatedBar = index;
@@ -348,7 +423,7 @@ DI14      : {h1Directional}";
                 }
             }
 
-            if (_estado == EstadoSwing.SwingActivo)
+            else if (_estado == EstadoSwing.SwingActivo)
             {
                 int activeAge = index - _activatedBar;
 
@@ -362,15 +437,24 @@ DI14      : {h1Directional}";
                 ActualizarFinDinamico(index);
                 CalcularNiveles();
 
-                if (TocoZonaPullback50(index))
+                if (index > _endBar && TocoZonaPullback50(index))
                 {
                     _estado = EstadoSwing.SwingCongelado;
+                    _frozenBar = index;
                     Print("SWING CONGELADO: precio tocó 50%.");
                 }
             }
 
-            if (_estado == EstadoSwing.SwingCongelado)
+            else if (_estado == EstadoSwing.SwingCongelado)
             {
+            int frozenAge = index - _frozenBar;
+
+            if (_frozenBar >= 0 && frozenAge > MaxFrozenLifeBars)
+{
+            Print("SWING CONGELADO EXPIRADO: superó {0} barras.", MaxFrozenLifeBars);
+            ReiniciarSwing();
+                     return;
+}
                 if (EvaluarResolucion(index))
                 {
                     ReiniciarSwing();
@@ -382,6 +466,13 @@ DI14      : {h1Directional}";
 
         private void CrearCandidatoBajista(int bar)
         {
+           double previousLow;
+
+            if (!TryGetPreviousH1SwingLow(bar, out previousLow))
+            return;
+
+            _candidateBosLevel = previousLow;
+
             _direccion = "BAJISTA";
 
             _originBar = bar;
@@ -400,6 +491,12 @@ DI14      : {h1Directional}";
 
         private void CrearCandidatoAlcista(int bar)
         {
+            double previousHigh;
+
+        if (!TryGetPreviousH1SwingHigh(bar, out previousHigh))
+          return;
+
+         _candidateBosLevel = previousHigh;
             _direccion = "ALCISTA";
 
             _originBar = bar;
@@ -581,9 +678,11 @@ DI14      : {h1Directional}";
             _originBar = -1;
             _endBar = -1;
             _activatedBar = -1;
+            _frozenBar = -1;
 
             _originPrice = 0;
             _endPrice = 0;
+            _candidateBosLevel = double.NaN;
 
             _level0 = 0;
             _level382 = 0;
@@ -597,22 +696,26 @@ DI14      : {h1Directional}";
         }
 
         private string GetSwingStatusText()
-        {
-            if (_estado == EstadoSwing.BuscandoSwing)
-                return "BUSCANDO";
+{
+    string directionText =
+        _direccion == "ALCISTA" ? "Alcista" :
+        _direccion == "BAJISTA" ? "Bajista" :
+        "";
 
-            if (_estado == EstadoSwing.SwingCandidato)
-                return "CAND " + _direccion;
+    if (_estado == EstadoSwing.BuscandoSwing)
+        return "Buscando";
 
-            if (_estado == EstadoSwing.SwingActivo)
-                return "ACTIVO " + _direccion;
+    if (_estado == EstadoSwing.SwingCandidato)
+        return "Candidato " + directionText;
 
-            if (_estado == EstadoSwing.SwingCongelado)
-                return "CONG " + _direccion;
+    if (_estado == EstadoSwing.SwingActivo)
+        return "Activo " + directionText;
 
-            return "BUSCANDO";
-        }
+    if (_estado == EstadoSwing.SwingCongelado)
+        return "Congelado " + directionText;
 
+    return "Buscando";
+}
         private string GetDirectionalStatus(
     DirectionalMovementSystem dms,
     int index,
@@ -1469,6 +1572,45 @@ private void UpdateH1PullbackMemory(
 
             return true;
         }
+         private bool TryGetPreviousH1SwingHigh(int beforeBar, out double price)
+{
+    price = double.NaN;
+
+    for (int bar = beforeBar - 1; bar >= PivotStrength; bar--)
+    {
+        if (bar + PivotStrength >= _h1Bars.Count)
+            continue;
+
+        if (IsH1SwingHigh(bar, PivotStrength))
+        {
+            price = _h1Bars.HighPrices[bar];
+            return true;
+        }
+    }
+
+    return false;
+}
+
+private bool TryGetPreviousH1SwingLow(int beforeBar, out double price)
+{
+    price = double.NaN;
+
+    for (int bar = beforeBar - 1; bar >= PivotStrength; bar--)
+    {
+        if (bar + PivotStrength >= _h1Bars.Count)
+            continue;
+
+        if (IsH1SwingLow(bar, PivotStrength))
+        {
+            price = _h1Bars.LowPrices[bar];
+            return true;
+        }
+    }
+
+    return false;
+}
+
+        
 
         private void DrawTextPanel(string text)
         {
