@@ -259,11 +259,14 @@ bool d1PhaseConfirmed =
     d1Phase.StartsWith("F2 -") &&
     d1Phase.Contains("| Check");
 
-bool d1Ready =
+bool d1CoreReady =
     d1TrendConfirmed &&
     d1EmasConfirmed &&
-    d1CarrilConfirmed &&
     d1PhaseConfirmed;
+
+bool d1Ready =
+    d1CoreReady &&
+    d1CarrilConfirmed;
 
 bool h1IndicatorConfirmed =
     h1Health.Contains("Convergencia") &&
@@ -275,8 +278,9 @@ bool h1SwingReady =
 
     bool h1SwingOperational =
     h1SwingReady &&
-    d1Ready &&
-    syncState != SyncState.Off;
+    d1CoreReady &&
+    syncState == SyncState.On &&
+    h1IndicatorConfirmed;
 
 string swingStatus = GetSwingStatusText();
 
@@ -302,7 +306,7 @@ else if (_estado == EstadoSwing.SwingCandidato)
 
 
 UpdateH1PullbackMemory(
-    d1Ready,
+    d1CoreReady,
     syncState,
     h1Trend,
     h1Index,
@@ -890,8 +894,8 @@ private int CalculateFiltersScore(
     if (d1EmasConfirmed)
         score += 10;
 
-    if (d1CarrilConfirmed)
-        score += 5;
+    // Carril 8 queda temporalmente informativo.
+// No suma ni bloquea hasta calibración final.
 
     if (d1PhaseConfirmed)
         score += 25;
@@ -926,13 +930,13 @@ private int CalculateFiltersScore(
 
 private FiltersState GetFiltersState(int score)
 {
-    if (score >= 100)
+    if (score >= 85)
         return FiltersState.SetupOptimo;
 
-    if (score >= 80)
+    if (score >= 60)
         return FiltersState.AltaPrioridad;
 
-    if (score >= 50)
+    if (score >= 30)
         return FiltersState.DarSeguimiento;
 
     return FiltersState.SinSetup;
