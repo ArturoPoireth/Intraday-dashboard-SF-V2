@@ -19,6 +19,18 @@ namespace cAlgo.Robots
         [Parameter("AO Difference Tolerance (%)", DefaultValue = 5.0, MinValue = 0.0, MaxValue = 25.0, Step = 1.0)]
         public double AoDifferenceTolerancePercent { get; set; }
 
+        [Parameter("AO Pivot Strength", DefaultValue = 2, MinValue = 1, MaxValue = 5, Step = 1)]
+        public int AoPivotStrength { get; set; }
+
+        [Parameter("AO Max Sequence Pivots", DefaultValue = 6, MinValue = 2, MaxValue = 10, Step = 1)]
+        public int AoMaxSequencePivots { get; set; }
+
+        [Parameter("AO Max Lookback D1", DefaultValue = 40, MinValue = 20, MaxValue = 200, Step = 5)]
+        public int AoMaxLookbackD1 { get; set; }
+
+        [Parameter("AO Max Lookback H1", DefaultValue = 160, MinValue = 40, MaxValue = 400, Step = 10)]
+        public int AoMaxLookbackH1 { get; set; }
+
         [Parameter("AO Max Pivot Age D1", DefaultValue = 60, MinValue = 5, MaxValue = 250, Step = 5)]
         public int AoMaxPivotAgeD1 { get; set; }
 
@@ -70,6 +82,22 @@ namespace cAlgo.Robots
              Alcista,
              Bajista
         }
+
+         private enum IndicatorDirection
+       {
+             None,
+             Up,
+              Down
+       }
+
+        private enum IndicatorSignal
+{
+             None,
+             ConvergenciaAlcista,
+             ConvergenciaBajista,
+             DivergenciaAlcista,
+             DivergenciaBajista
+}
 
         private enum FiltersState
         {
@@ -1133,34 +1161,99 @@ private bool IsAoLower(double previousAo, double currentAo)
     return currentAo < previousAo &&
            IsAoDifferenceSignificant(previousAo, currentAo);
 }
-    private string GetD1Health(int index, string d1Trend)
+private double GetD1AoAroundPricePivot(int pivotIndex, int window)
 {
-    bool trendBullish = d1Trend.Contains("Alcista");
-    bool trendBearish = d1Trend.Contains("Bajista");
+    double selectedAo = CalculateD1AO(pivotIndex);
 
-    if (!trendBullish && !trendBearish)
+    int start = Math.Max(34, pivotIndex - window);
+    int end = Math.Min(_d1Bars.Count - 2, pivotIndex + window);
+
+    for (int i = start; i <= end; i++)
+    {
+        double ao = CalculateD1AO(i);
+
+        if (Math.Abs(ao) > Math.Abs(selectedAo))
+            selectedAo = ao;
+    }
+
+    return selectedAo;
+}
+
+   private string GetD1Health(int index, string d1Trend)
+{
+    bool trendConfirmed =
+        d1Trend.Contains("| Check");
+
+    if (!trendConfirmed)
         return "No Aplica | Info";
 
-        string structuralResult;
+    bool trendBullish =
+        d1Trend.Contains("Alcista");
 
-if (TryGetD1StructuralIndicator(index, d1Trend, out structuralResult))
-    return structuralResult;
+    bool trendBearish =
+        d1Trend.Contains("Bajista");
 
-    double ao = CalculateD1AO(index);
+    if (trendBullish)
+    {
+        double high1, high2;
+        int highBar1, highBar2;
 
-    if (trendBullish && ao > 0)
-        return "Convergencia Alcista | Info";
+        bool foundHighs = FindLastTwoD1SwingHighs(
+            index,
+            out high1,
+            out high2,
+            out highBar1,
+            out highBar2);
 
-    if (trendBullish && ao < 0)
-        return "Divergencia Bajista | Info";
+        if (!foundHighs)
+            return "Sin Confirmación | Info";
 
-    if (trendBearish && ao < 0)
-        return "Convergencia Bajista | Info";
+        if (high2 <= high1)
+            return "Sin Confirmación | Info";
 
-    if (trendBearish && ao > 0)
-        return "Divergencia Alcista | Info";
+        double ao1 = GetD1AoAroundPricePivot(highBar1, 2);
+        double ao2 = GetD1AoAroundPricePivot(highBar2, 2);
 
-    return "Sin Confirmación | Info";
+        if (ao2 > ao1)
+            return "Convergencia Alcista | Info";
+
+        if (ao2 < ao1)
+            return "Divergencia Bajista | Info";
+
+        return "Sin Confirmación | Info";
+    }
+
+    if (trendBearish)
+    {
+        double low1, low2;
+        int lowBar1, lowBar2;
+
+        bool foundLows = FindLastTwoD1SwingLows(
+            index,
+            out low1,
+            out low2,
+            out lowBar1,
+            out lowBar2);
+
+        if (!foundLows)
+            return "Sin Confirmación | Info";
+
+        if (low2 >= low1)
+            return "Sin Confirmación | Info";
+
+        double ao1 = GetD1AoAroundPricePivot(lowBar1, 2);
+        double ao2 = GetD1AoAroundPricePivot(lowBar2, 2);
+
+        if (ao2 < ao1)
+            return "Convergencia Bajista | Info";
+
+        if (ao2 > ao1)
+            return "Divergencia Alcista | Info";
+
+        return "Sin Confirmación | Info";
+    }
+
+    return "No Aplica | Info";
 }
 
 private bool TryGetD1StructuralIndicator(
@@ -1262,30 +1355,30 @@ private bool TryGetD1StructuralIndicator(
     if (syncState != SyncState.On)
         return "No Aplica | Pend";
 
-    bool trendBullish = h1Trend == "ALCISTA";
-    bool trendBearish = h1Trend == "BAJISTA";
+    bool trendConfirmed =
+        h1Trend == "ALCISTA" ||
+        h1Trend == "BAJISTA";
 
-    if (!trendBullish && !trendBearish)
+    if (!trendConfirmed)
         return "No Aplica | Pend";
 
-        string structuralResult;
+    IndicatorSignal signal;
 
-if (TryGetH1StructuralIndicator(index, h1Trend, out structuralResult))
-    return structuralResult;
+    if (TryEvaluateDynamicIndicator(
+        _h1Bars,
+        CalculateH1AO,
+        index,
+        AoMaxLookbackH1,
+        out signal))
+    {
+        string signalName = GetIndicatorSignalName(signal);
 
-    double ao = CalculateH1AO(index);
+        bool convergence =
+            signal == IndicatorSignal.ConvergenciaAlcista ||
+            signal == IndicatorSignal.ConvergenciaBajista;
 
-    if (trendBullish && ao > 0)
-        return "Convergencia Alcista | Check";
-
-    if (trendBullish && ao < 0)
-        return "Divergencia Bajista | Pend";
-
-    if (trendBearish && ao < 0)
-        return "Convergencia Bajista | Check";
-
-    if (trendBearish && ao > 0)
-        return "Divergencia Alcista | Pend";
+        return signalName + (convergence ? " | Check" : " | Pend");
+    }
 
     return "Sin Confirmación | Pend";
 }
@@ -1381,6 +1474,229 @@ private bool TryGetH1StructuralIndicator(
     return false;
 }
 
+private bool IsAoPeak(
+    Func<int, double> calculateAo,
+    int index,
+    int strength)
+{
+    double value = calculateAo(index);
+
+    bool isHighPeak = true;
+    bool isLowPeak = true;
+
+    for (int i = 1; i <= strength; i++)
+    {
+        double left = calculateAo(index - i);
+        double right = calculateAo(index + i);
+
+        if (value <= left || value <= right)
+            isHighPeak = false;
+
+        if (value >= left || value >= right)
+            isLowPeak = false;
+    }
+
+    return isHighPeak || isLowPeak;
+}
+
+private bool TryCollectAoPeaks(
+    Func<int, double> calculateAo,
+    int currentIndex,
+    int maxLookback,
+    out int[] peakBars,
+    out double[] peakValues)
+{
+    int[] bars = new int[AoMaxSequencePivots];
+    double[] values = new double[AoMaxSequencePivots];
+    int count = 0;
+
+    int start = currentIndex - AoPivotStrength;
+    int end = Math.Max(34 + AoPivotStrength, currentIndex - maxLookback);
+
+    int aoSign = 0;
+
+for (int bar = start; bar >= end; bar--)
+{
+    if (!IsAoPeak(calculateAo, bar, AoPivotStrength))
+        continue;
+
+    double aoValue = calculateAo(bar);
+
+    if (Math.Abs(aoValue) <= double.Epsilon)
+        continue;
+
+    int currentSign = aoValue > 0 ? 1 : -1;
+
+    if (aoSign == 0)
+        aoSign = currentSign;
+
+    if (currentSign != aoSign)
+        continue;
+
+    bars[count] = bar;
+    values[count] = aoValue;
+    count++;
+
+    if (count >= AoMaxSequencePivots)
+        break;
+}
+    if (count < 2)
+    {
+        peakBars = new int[0];
+        peakValues = new double[0];
+        return false;
+    }
+
+    peakBars = new int[count];
+    peakValues = new double[count];
+
+    for (int i = 0; i < count; i++)
+    {
+        peakBars[i] = bars[i];
+        peakValues[i] = values[i];
+    }
+
+    return true;
+}
+private bool TryBuildAoSequence(
+    double[] peakValues,
+    out IndicatorDirection aoDirection,
+    out int sequenceLength)
+{
+    aoDirection = IndicatorDirection.None;
+    sequenceLength = 0;
+
+    if (peakValues == null || peakValues.Length < 2)
+        return false;
+
+    double recent = peakValues[0];   // A: punto más reciente, derecha
+    double previous = peakValues[1]; // B: punto anterior, izquierda de A
+
+    if (IsAoHigher(previous, recent))
+        aoDirection = IndicatorDirection.Up;
+    else if (IsAoLower(previous, recent))
+        aoDirection = IndicatorDirection.Down;
+    else
+        return false;
+
+    sequenceLength = 2;
+
+    for (int i = 2; i < peakValues.Length; i++)
+    {
+        double older = peakValues[i];     // C, D, E...
+        double newer = peakValues[i - 1]; // B, C, D...
+
+        if (aoDirection == IndicatorDirection.Up)
+        {
+            if (!IsAoHigher(older, newer))
+                break;
+        }
+
+        if (aoDirection == IndicatorDirection.Down)
+        {
+            if (!IsAoLower(older, newer))
+                break;
+        }
+
+        sequenceLength++;
+    }
+
+    return sequenceLength >= 2;
+}
+private IndicatorDirection GetPriceDirection(
+    Bars bars,
+    int recentBar,
+    int olderBar)
+{
+    double recentClose = bars.ClosePrices[recentBar];
+    double olderClose = bars.ClosePrices[olderBar];
+
+    if (recentClose > olderClose)
+        return IndicatorDirection.Up;
+
+    if (recentClose < olderClose)
+        return IndicatorDirection.Down;
+
+    return IndicatorDirection.None;
+}
+
+private IndicatorSignal ClassifyIndicatorSignal(
+    IndicatorDirection aoDirection,
+    IndicatorDirection priceDirection)
+{
+    if (aoDirection == IndicatorDirection.Up &&
+        priceDirection == IndicatorDirection.Up)
+        return IndicatorSignal.ConvergenciaAlcista;
+
+    if (aoDirection == IndicatorDirection.Down &&
+        priceDirection == IndicatorDirection.Down)
+        return IndicatorSignal.ConvergenciaBajista;
+
+    if (aoDirection == IndicatorDirection.Up &&
+        priceDirection == IndicatorDirection.Down)
+        return IndicatorSignal.DivergenciaAlcista;
+
+    if (aoDirection == IndicatorDirection.Down &&
+        priceDirection == IndicatorDirection.Up)
+        return IndicatorSignal.DivergenciaBajista;
+
+    return IndicatorSignal.None;
+}
+private bool TryEvaluateDynamicIndicator(
+    Bars bars,
+    Func<int, double> calculateAo,
+    int index,
+    int maxLookback,
+    out IndicatorSignal signal)
+{
+    signal = IndicatorSignal.None;
+
+    int[] peakBars;
+    double[] peakValues;
+
+    if (!TryCollectAoPeaks(
+        calculateAo,
+        index,
+        maxLookback,
+        out peakBars,
+        out peakValues))
+        return false;
+
+    IndicatorDirection aoDirection;
+    int sequenceLength;
+
+    if (!TryBuildAoSequence(
+        peakValues,
+        out aoDirection,
+        out sequenceLength))
+        return false;
+
+    int recentBar = peakBars[0];
+    int olderBar = peakBars[sequenceLength - 1];
+
+    IndicatorDirection priceDirection =
+        GetPriceDirection(bars, recentBar, olderBar);
+
+    signal = ClassifyIndicatorSignal(aoDirection, priceDirection);
+
+    return signal != IndicatorSignal.None;
+}
+private string GetIndicatorSignalName(IndicatorSignal signal)
+{
+    if (signal == IndicatorSignal.ConvergenciaAlcista)
+        return "Convergencia Alcista";
+
+    if (signal == IndicatorSignal.ConvergenciaBajista)
+        return "Convergencia Bajista";
+
+    if (signal == IndicatorSignal.DivergenciaAlcista)
+        return "Divergencia Alcista";
+
+    if (signal == IndicatorSignal.DivergenciaBajista)
+        return "Divergencia Bajista";
+
+    return "Sin Confirmación";
+}
         private double GetD1AOMaxAroundPivot(int pivotIndex, int window)
         {
             double max = double.MinValue;
