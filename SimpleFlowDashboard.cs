@@ -16,6 +16,24 @@ namespace cAlgo.Robots
         [Parameter("Trend Check Separation (%)", DefaultValue = 14.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
         public double TrendCheckSeparationPercent { get; set; }
 
+        [Parameter("D1 Trend Min Sep EMA8-21 % ATR", DefaultValue = 20.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
+        public double D1TrendMinFastMidSeparationPercent { get; set; }
+
+        [Parameter("D1 Trend Min Sep EMA21-50 % ATR", DefaultValue = 25.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
+        public double D1TrendMinMidSlowSeparationPercent { get; set; }
+
+        [Parameter("D1 Trend Structure Lookback", DefaultValue = 12, MinValue = 4, MaxValue = 60, Step = 1)]
+        public int D1TrendStructureLookback { get; set; }
+
+        [Parameter("D1 Trend Range Lookback", DefaultValue = 8, MinValue = 3, MaxValue = 40, Step = 1)]
+        public int D1TrendRangeLookback { get; set; }
+
+        [Parameter("D1 Trend Breakout ATR %", DefaultValue = 10.0, MinValue = 0.0, MaxValue = 100.0, Step = 1.0)]
+        public double D1TrendBreakoutAtrPercent { get; set; }
+
+        [Parameter("D1 Trend Use Closed Candle", DefaultValue = false)]
+        public bool D1TrendUseClosedCandle { get; set; }
+
         [Parameter("AO Difference Tolerance (%)", DefaultValue = 5.0, MinValue = 0.0, MaxValue = 25.0, Step = 1.0)]
         public double AoDifferenceTolerancePercent { get; set; }
 
@@ -789,34 +807,162 @@ else if (contextoAlcista && pivotLow)
     return movement + " | " + status;
 }
 
-      private string GetD1Trend(int index)
-{
-    double ema21 = _d1Ema21.Result[index];
-    double ema50 = _d1Ema50.Result[index];
-    double atr = _d1Atr20.Result[index];
+        private string GetD1Trend(int index)
+        {
+            int evalIndex = D1TrendUseClosedCandle
+                ? index
+                : _d1Bars.Count - 1;
 
-    double minPercent = Math.Min(
-        TrendMinSeparationPercent,
-        TrendCheckSeparationPercent);
+            evalIndex = Math.Min(evalIndex, _d1Bars.Count - 1);
 
-    double checkPercent = Math.Max(
-        TrendMinSeparationPercent,
-        TrendCheckSeparationPercent);
+            int minBarsRequired = Math.Max(
+    50,
+    Math.Max(D1TrendStructureLookback * 2 + 2, D1TrendRangeLookback + 2));
 
-    double separation = Math.Abs(ema21 - ema50);
-    double minThreshold = atr * (minPercent / 100.0);
-    double checkThreshold = atr * (checkPercent / 100.0);
+            if (evalIndex < minBarsRequired)
+                return "Lateralizado | Pend";
 
-    if (atr <= 0 || separation < minThreshold)
-        return "Sin Tendencia | Pend";
+            double ema8 = _d1Ema8.Result[evalIndex];
+            double ema21 = _d1Ema21.Result[evalIndex];
+            double ema50 = _d1Ema50.Result[evalIndex];
+            double atr = _d1Atr20.Result[evalIndex];
 
-    string direction = ema21 > ema50 ? "Alcista" : "Bajista";
+            if (atr <= 0)
+                return "Lateralizado | Pend";
 
-    if (separation < checkThreshold)
-        return direction + " | En Desarrollo";
+            bool bullishOrder =
+                ema8 > ema21 &&
+                ema21 > ema50;
 
-    return direction + " | Check";
-}
+            bool bearishOrder =
+                ema8 < ema21 &&
+                ema21 < ema50;
+
+            if (!bullishOrder && !bearishOrder)
+                return "Lateralizado | Pend";
+
+            double fastMidSeparationPercent =
+                Math.Abs(ema8 - ema21) / atr * 100.0;
+
+            double midSlowSeparationPercent =
+                Math.Abs(ema21 - ema50) / atr * 100.0;
+
+            bool separationsOk =
+                fastMidSeparationPercent >= D1TrendMinFastMidSeparationPercent &&
+                midSlowSeparationPercent >= D1TrendMinMidSlowSeparationPercent;
+
+            string structure = GetD1TrendStructure(evalIndex, D1TrendStructureLookback);
+
+            if (bullishOrder)
+            {
+                if (separationsOk && structure == "Alcista")
+                    return "Alcista | Check";
+
+                if (IsD1TrendActiveBreakout(evalIndex, true))
+                    return "Alcista | En Desarrollo";
+
+                return "En Desarrollo | Pend";
+            }
+
+            if (bearishOrder)
+            {
+                if (separationsOk && structure == "Bajista")
+                    return "Bajista | Check";
+
+                if (IsD1TrendActiveBreakout(evalIndex, false))
+                    return "Bajista | En Desarrollo";
+
+                return "En Desarrollo | Pend";
+            }
+
+            return "Lateralizado | Pend";
+        }
+
+        private string GetD1TrendStructure(int index, int lookback)
+        {
+            if (lookback < 2 || index < lookback * 2)
+                return "Consolidacion";
+
+            int recentStart = index - lookback + 1;
+            int recentEnd = index;
+            int previousStart = recentStart - lookback;
+            int previousEnd = recentStart - 1;
+
+            if (previousStart < 0)
+                return "Consolidacion";
+
+            double recentHigh = GetD1HighestHigh(recentStart, recentEnd);
+            double recentLow = GetD1LowestLow(recentStart, recentEnd);
+            double previousHigh = GetD1HighestHigh(previousStart, previousEnd);
+            double previousLow = GetD1LowestLow(previousStart, previousEnd);
+
+            bool bullishStructure =
+                recentHigh > previousHigh &&
+                recentLow > previousLow;
+
+            bool bearishStructure =
+                recentHigh < previousHigh &&
+                recentLow < previousLow;
+
+            if (bullishStructure)
+                return "Alcista";
+
+            if (bearishStructure)
+                return "Bajista";
+
+            return "Consolidacion";
+        }
+
+        private bool IsD1TrendActiveBreakout(int index, bool bullish)
+        {
+            int lookback = Math.Max(3, D1TrendRangeLookback);
+
+            if (index < lookback)
+                return false;
+
+            double atr = _d1Atr20.Result[index];
+
+            if (atr <= 0)
+                return false;
+
+            int start = index - lookback;
+            int end = index - 1;
+
+            double rangeHigh = GetD1HighestHigh(start, end);
+            double rangeLow = GetD1LowestLow(start, end);
+            double buffer = atr * (D1TrendBreakoutAtrPercent / 100.0);
+
+            if (bullish)
+                return _d1Bars.HighPrices[index] > rangeHigh + buffer;
+
+            return _d1Bars.LowPrices[index] < rangeLow - buffer;
+        }
+
+        private double GetD1HighestHigh(int start, int end)
+        {
+            double highest = double.MinValue;
+
+            for (int i = start; i <= end; i++)
+            {
+                if (_d1Bars.HighPrices[i] > highest)
+                    highest = _d1Bars.HighPrices[i];
+            }
+
+            return highest;
+        }
+
+        private double GetD1LowestLow(int start, int end)
+        {
+            double lowest = double.MaxValue;
+
+            for (int i = start; i <= end; i++)
+            {
+                if (_d1Bars.LowPrices[i] < lowest)
+                    lowest = _d1Bars.LowPrices[i];
+            }
+
+            return lowest;
+        }
 
 
         private string GetH1Trend(int index)
